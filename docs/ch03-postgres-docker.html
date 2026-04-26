@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>第3章 PostgreSQL を Docker で動かす — gacha_gacha</title>
+<title>第3章 ローカルに移行してフロントから叩く — gacha_gacha</title>
 <link rel="stylesheet" href="./assets/style.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
 </head>
@@ -13,53 +13,488 @@
   <main>
     <div class="meta-bar">
       <span class="badge">Chapter 3</span>
-      <span class="badge draft">骨子のみ (本文は読者が書き足す枠)</span>
+      <span>所要時間: 90〜120 分</span>
+      <span>形式: ローカル PC でファイルを編集 + ブラウザで動作確認</span>
     </div>
-    <h1>第 3 章 — PostgreSQL を Docker で動かす</h1>
+    <h1>第 3 章 — ローカルに移行してフロントから叩く</h1>
 
     <p>
-      この章では、ローカルマシンを汚さずに PostgreSQL を立ち上げて、
-      <span class="file-ref">db/schema.sql</span> と
-      <span class="file-ref">db/seed.sql</span> が初回起動で自動投入される
-      仕組みを理解します。
+      前章までで <strong>HTTP サーバの骨格</strong> と <strong>DB のスキーマ</strong> が手元に揃いました。
+      この章でいよいよ <strong>ブラウザで動くフロントエンド</strong> を登場させ、
+      フロント → サーバ → DB の <em>一気通貫の流れ</em> を 1 度回します。
     </p>
 
-    <h2>学習目標</h2>
+    <p>
+      Colab はここで卒業です。 ブラウザで動くフロントを観察するなら、
+      ローカルで動かす方が断然見やすい (デバッグツール / Network タブが使える)。
+      ついでに本番想定の <strong>PostgreSQL を Docker で起動</strong> しておきます。
+    </p>
+
+    <div class="callout tip">
+      <span class="label">📐 この章のゴール</span>
+      <p>ブラウザで <code>http://localhost:5500</code> を開いて、
+        <strong>「新規登録」 ボタンを押したらガチャ画面が出る</strong> 状態にする。
+        中身は (まだ DB を使わずに) ハードコードで返すだけだが、
+        <strong>フロント → サーバの往復</strong> が成立する。 次章で DB 接続に置き換える。</p>
+    </div>
+
+    <h2>必要なもの</h2>
     <ul>
-      <li>Docker / コンテナ / イメージ / ボリュームの違いを説明できる</li>
-      <li><code>docker-compose.yml</code> の各キーが何を意味するか言える</li>
-      <li>初期化スクリプトの実行順序 (<code>/docker-entrypoint-initdb.d</code>) を理解する</li>
-      <li>データを残す/消すの操作を切り分けられる (<code>down</code> vs <code>down -v</code>)</li>
+      <li>Python 3.10 以上</li>
+      <li><a href="https://www.docker.com/products/docker-desktop/" target="_blank">Docker Desktop</a> (Mac/Windows) もしくは Docker Engine + Compose</li>
+      <li>テキストエディタ (VS Code など)</li>
+      <li>ブラウザ (Chrome/Edge/Firefox/Safari)</li>
+      <li>ターミナル (macOS/Linux はそのまま、Windows は WSL2 推奨)</li>
     </ul>
 
-    <h2>扱うトピック</h2>
-    <ol>
-      <li>そもそもなぜ DB はコンテナで動かすのか (環境再現性 / OS差吸収)</li>
-      <li><code>docker compose up -d</code> で起きていること</li>
-      <li>ポート公開 / ボリュームマウント / 環境変数 / ヘルスチェック</li>
-      <li>Postgres の <code>POSTGRES_*</code> 環境変数</li>
-      <li>初期化スクリプトの仕様と落とし穴 (2 回目以降は実行されない)</li>
-      <li><code>psql</code> コンテナ内/ホストから接続する方法 2 通り</li>
-      <li>運用 Tips: データを壊して作り直すワンライナー</li>
-    </ol>
+    <h2>3.1 Notebook を持ち帰る</h2>
+    <p>
+      Colab メニューから <strong>「ファイル」→「ダウンロード」→「.ipynb をダウンロード」</strong>。
+      Ch.1/2 で書いた全コードがローカルに落ちてきます。 後の作業で必要なコード片はここから切り出して使います。
+    </p>
 
-    <h2>参照コード</h2>
+    <h2>3.2 作業フォルダを作る</h2>
+    <p>ローカルの好きな場所に作業フォルダを作って、 中で空のディレクトリ階層を切ります。</p>
+
+<pre><code class="language-bash">mkdir -p ~/gacha_gacha/{db,server,web}
+cd ~/gacha_gacha</code></pre>
+
+    <h2>3.3 Postgres を Docker で 1 行起動</h2>
+    <p>下のファイルを <code>~/gacha_gacha/docker-compose.yml</code> として保存します。</p>
+
+    <div class="colab-step">
+      <span class="step-tag">📄 docker-compose.yml</span>
+<pre><code class="language-yaml">services:
+  db:
+    image: postgres:16
+    container_name: gacha_pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gacha
+      POSTGRES_USER: gacha
+      POSTGRES_PASSWORD: gacha
+      TZ: Asia/Tokyo
+    ports:
+      - "5432:5432"
+    volumes:
+      - gacha_pgdata:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./db/seed.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gacha -d gacha"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  gacha_pgdata:</code></pre>
+    </div>
+
+    <p>
+      第2章の最後で書き出した <code>schema.sql</code> と <code>seed.sql</code> を
+      <code>~/gacha_gacha/db/</code> に置きます (Notebook の左サイドにある
+      📁アイコンからダウンロードできます。 もしくはリポジトリの
+      <code>db/schema.sql</code> / <code>db/seed.sql</code> をコピー)。
+    </p>
+
+    <p>準備できたら起動:</p>
+<pre><code class="language-bash">docker compose up -d
+docker compose ps          # State が "Up (healthy)" になればOK
+docker compose exec db psql -U gacha -d gacha -c "\dt"   # テーブル一覧</code></pre>
+
+    <div class="expected-output">
+      <span class="lbl">✅ 期待される出力</span>
+<pre><code>             List of relations
+ Schema |       Name        | Type  | Owner
+--------+-------------------+-------+-------
+ public | characters        | table | gacha
+ public | gacha_items       | table | gacha
+ public | gachas            | table | gacha
+ public | sessions          | table | gacha
+ public | user_characters   | table | gacha
+ public | users             | table | gacha
+(6 rows)</code></pre>
+    </div>
+
+    <p>
+      ⚠️ <code>sessions</code> が無い場合は、Ch.2 の playground スキーマには <code>sessions</code> が
+      含まれていなかったため。 リポジトリの完成版 <code>db/schema.sql</code> を使ってください
+      (またはあとで足します)。
+    </p>
+
+    <h2>3.4 サーバ (Ch.1 で育てた完成版) を配置</h2>
+    <p>
+      Notebook の Step 1-G セルからコードを丸ごとコピペして、
+      <code>~/gacha_gacha/server/my_server.py</code> として保存します。
+      <strong>Notebook 用の <code>serve()</code> ヘルパは要らないので、 末尾を <code>HTTPServer().serve_forever()</code>
+      に書き換えます</strong>。
+    </p>
+
+    <div class="colab-step">
+      <span class="step-tag">📄 server/my_server.py (= Ch.1 の最終形 + サーバ起動コードを末尾に)</span>
+<pre><code class="language-python">import json, traceback
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import urlparse, parse_qs
+
+# ----- 例外をステータス付きで投げるための仕掛け (Ch.1 Step 6 と同じ) ------
+class AppError(Exception):
+    def __init__(self, status, message):
+        super().__init__(message)
+        self.status, self.message = status, message
+def bad_request(msg):  return AppError(400, msg)
+def not_found(msg="Not Found"): return AppError(404, msg)
+def unauthorized(msg="ログインが必要です"): return AppError(401, msg)
+
+# ----- ルーター辞書 ----------------------------------------------------------
+ROUTES = {}
+def route(method, path):
+    def deco(fn):
+        ROUTES[(method.upper(), path)] = fn
+        return fn
+    return deco
+
+# ----- まずは健康確認だけ ----------------------------------------------------
+@route("GET", "/api/health")
+def health(h):
+    h._json(200, {"status": "ok"})
+
+# ----- ハンドラ基盤 (Ch.1 の集大成 + CORS) ------------------------------------
+class App(BaseHTTPRequestHandler):
+    def do_GET(self):     self._dispatch("GET")
+    def do_POST(self):    self._dispatch("POST")
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self._cors()
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def _dispatch(self, method):
+        path = urlparse(self.path).path
+        handler = ROUTES.get((method, path))
+        if handler is None:
+            return self._json(404, {"error": "Not Found", "path": path})
+        try:
+            handler(self)
+        except AppError as e:
+            self._json(e.status, {"error": e.message})
+        except Exception as e:
+            traceback.print_exc()
+            self._json(500, {"error": "internal server error", "detail": str(e)})
+
+    def _cors(self):
+        # フロントが localhost:5500 から叩くため、CORS を明示許可する
+        origin = self.headers.get("Origin", "")
+        if origin in ("http://localhost:5500", "http://127.0.0.1:5500"):
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Access-Control-Allow-Credentials", "true")
+            self.send_header("Vary", "Origin")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+
+    def _read_json(self):
+        n = int(self.headers.get("Content-Length", "0"))
+        raw = self.rfile.read(n) if n else b""
+        try:
+            return json.loads(raw.decode("utf-8")) if raw else {}
+        except json.JSONDecodeError as e:
+            raise bad_request(f"invalid json: {e}")
+
+    def _text(self, status, body):
+        b = body.encode("utf-8"); self.send_response(status); self._cors()
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+
+    def _json(self, status, obj):
+        b = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+        self.send_response(status); self._cors()
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+
+    def log_message(self, fmt, *args):
+        import sys
+        sys.stderr.write(f"[{self.command}] {self.path} -> {fmt % args}\n")
+
+# ----- 起動 ------------------------------------------------------------------
+if __name__ == "__main__":
+    addr = ("0.0.0.0", 8000)
+    print(f"listening on http://localhost:{addr[1]}")
+    print("ルート一覧:")
+    for (m, p) in sorted(ROUTES):
+        print(f"  {m:5s} {p}")
+    HTTPServer(addr, App).serve_forever()</code></pre>
+    </div>
+
+    <p>起動して、外側から疎通確認:</p>
+<pre><code class="language-bash">cd ~/gacha_gacha
+python server/my_server.py     # ← ここはターミナルに張り付くタイプ。 Ctrl+C で止める
+
+# 別ターミナルで:
+curl http://localhost:8000/api/health</code></pre>
+
+    <div class="expected-output">
+      <span class="lbl">✅ 期待される出力</span>
+<pre><code>{"status": "ok"}</code></pre>
+    </div>
+
+    <h2>3.5 フロント (= 既製品) を配置 — 3 分クッキング</h2>
+    <p>
+      フロントは「学習用に動くガチャ画面 + デバッグコンソール」 が乗った既製品です。
+      <strong>本リポジトリ <code>web/</code></strong> から 3 ファイル
+      (<code>index.html</code> / <code>app.js</code> / <code>style.css</code>) を
+      <code>~/gacha_gacha/web/</code> にコピー。
+    </p>
+
+<pre><code class="language-bash">cp /path/to/repo/web/index.html ~/gacha_gacha/web/
+cp /path/to/repo/web/app.js     ~/gacha_gacha/web/
+cp /path/to/repo/web/style.css  ~/gacha_gacha/web/
+
+# 別ターミナルで配信
+python -m http.server 5500 --directory ~/gacha_gacha/web</code></pre>
+
+    <p>
+      ブラウザで <strong><a href="http://localhost:5500" target="_blank">http://localhost:5500</a></strong> を開いてください。
+      画面下に <strong>🔍 デバッグコンソール</strong> が常設されています。
+      ガチャ画面 (UI) は上半分、サーバとの往復はすべて下半分に流れる構造です。
+    </p>
+
+    <div class="callout note">
+      <span class="label">📘 API 仕様書</span>
+      フロントが期待する API の形は、本サイト内の
+      <a href="./api-spec.html" target="_blank">📘 API 仕様書</a> にまとまっています。
+      この章では仕様書を見ながら、必要な API を <strong>1 つずつサーバに足していく</strong>
+      流れになります。
+    </div>
+
+    <h2>3.6 初回観察 — 「全 API が無い」 状態でフロントを開く</h2>
+    <p>
+      ブラウザで <code>http://localhost:5500</code> を開くと、
+      フロントは起動と同時に <code>GET /api/me</code> を叩きます (= 「あなたログイン中?」 確認)。
+      でもサーバはまだ <code>/api/me</code> を知らないので、 デバッグコンソールに
+      赤い <strong>404</strong> が出るはずです。
+    </p>
+
+    <div class="expected-output">
+      <span class="lbl">✅ デバッグコンソールでの観察</span>
+<pre><code>14:30:12 GET /api/me → 404 12ms ✗ 期待形式と違う (1箇所)
+   📥 サーバが返した本文 (JSON)
+   { "error": "Not Found", "path": "/api/me" }
+   📐 期待形式との差分
+     user: 期待 object, 実際 undefined</code></pre>
+    </div>
+
+    <p>
+      これでわかること: フロントは <strong>「ユーザー情報を返してね」</strong> と聞いているのに、
+      サーバは <strong>「そんなパス知らない」</strong> と答えている。
+      → サーバに <code>/api/me</code> を実装していこう。
+    </p>
+
+    <h2>3.7 第 1 スパイラル: <code>/api/me</code> を「常に 401」 で返す</h2>
+    <p>
+      最小実装: <strong>誰もログインしていない前提で 401 を返す</strong> だけ。
+      フロントはこれを「未ログイン」 と解釈して、登録/ログインフォームを出してくれます。
+    </p>
+
+    <div class="colab-step">
+      <span class="step-tag">📝 server/my_server.py に追記</span>
+      <code>@route("GET", "/api/health")</code> の下に追加:
+<pre><code class="language-python">@route("GET", "/api/me")
+def me(h):
+    raise unauthorized()</code></pre>
+    </div>
+
+    <p>サーバを Ctrl+C で止めて、再起動:</p>
+<pre><code class="language-bash">python server/my_server.py</code></pre>
+
+    <p>
+      ブラウザをリロード (or デバッグコンソールの「クリア」ボタン押下後にページ操作)。
+    </p>
+
+    <div class="expected-output">
+      <span class="lbl">✅ 期待される結果</span>
+      <ul>
+        <li>デバッグコンソール: <code>GET /api/me → 401 ✗ (期待形式と違う)</code></li>
+        <li>画面: 「ログイン or 新規登録」 フォームが表示される</li>
+      </ul>
+    </div>
+
+    <p>
+      フロントは <strong>200 + user 情報</strong> を期待しています (api-spec.html 参照)。
+      401 だと shape mismatch と判定され、登録フォームが出る = 期待動作。
+    </p>
+
+    <h2>3.8 第 2 スパイラル: <code>/api/register</code> を <em>鸚鵡返し</em> で実装</h2>
+    <p>
+      フォームに <code>alice / secret123</code> を入れて「新規登録」 ボタンを押します。
+      これも <code>POST /api/register</code> が無いので 404 で返るはず。
+      <strong>サーバ側で「受け取った body をそのまま返すだけ」 の最小実装を入れます</strong>。
+    </p>
+
+    <div class="colab-step">
+      <span class="step-tag">📝 server/my_server.py に追記</span>
+<pre><code class="language-python">@route("POST", "/api/register")
+def register(h):
+    body = h._read_json()
+    print("受け取った body:", body)   # ← サーバログに出る
+    h._json(200, {"received": body})  # ← まずは鸚鵡返し</code></pre>
+    </div>
+
+    <p>サーバを再起動して、フロントから「新規登録」 ボタンを押す。</p>
+
+    <div class="expected-output">
+      <span class="lbl">✅ 期待される結果</span>
+      <ul>
+        <li>サーバのターミナル: <code>受け取った body: {'name': 'alice', 'password': 'secret123', 'display_name': 'alice'}</code></li>
+        <li>デバッグコンソール: <code>POST /api/register → 200 ✗ 期待形式と違う (4箇所)</code> (オレンジ色)</li>
+        <li>画面上の「⚠️ 期待形式の応答が返ってきませんでした」 パネルに、
+          サーバが返した <code>{"received": {...}}</code> がそのまま表示される</li>
+      </ul>
+    </div>
+
+    <p>
+      <strong>これが最高の学習体験</strong>: 「サーバから何が返っているか」 が画面で確認でき、
+      「フロントが本当はどんな形を期待しているか」 が同じ画面に並ぶ。
+      仕様書 (<a href="./api-spec.html" target="_blank">api-spec.html</a>) と見比べて、
+      何を直せば期待形式に届くか考えます。
+    </p>
+
+    <h2>3.9 第 3 スパイラル: 仕様通りに揃えてみる (まずはハードコード)</h2>
+    <p>
+      仕様: <code>{"user": {"id":数, "name":文字列, "display_name":文字列, "coins":数}}</code>。
+      DB はまだ繋いでいないので、ハードコードで返してみます。
+    </p>
+
+    <div class="colab-step">
+      <span class="step-tag">📝 register ハンドラを書き換え</span>
+<pre><code class="language-python">@route("POST", "/api/register")
+def register(h):
+    body = h._read_json()
+    name = body.get("name", "anonymous")
+    h._json(200, {
+        "user": {
+            "id": 1,
+            "name": name,
+            "display_name": body.get("display_name") or name,
+            "coins": 1000,
+        }
+    })</code></pre>
+    </div>
+
+    <p>サーバ再起動 → ブラウザでリロード → 新規登録ボタン押下。</p>
+
+    <div class="expected-output">
+      <span class="lbl">🎉 期待される結果</span>
+      <ul>
+        <li>デバッグコンソール: <code>POST /api/register → 200 ✓ 期待形式</code> (緑色)</li>
+        <li>画面: 「ようこそ alice さん」「所持コイン: 1000」 と<strong>ガチャ画面が出る</strong></li>
+      </ul>
+    </div>
+
+    <p>
+      <strong>フロント → サーバの一気通貫が成立しました 🎉</strong>。
+      次のセクションで残りの API もハードコードで埋めて、 ガチャを最後まで通します。
+    </p>
+
+    <h2>3.10 残り API もハードコードで通す</h2>
+    <p>
+      画面に出たガチャを実際に引いてみると、 <code>POST /api/gacha/pull</code> も <code>GET /api/gacha/list</code>
+      もまだ無いので 404 が出ます。 同じ要領で 1 つずつ実装します。
+      DB が無いので毎回同じ値を返すだけ。 「<strong>形を満たす</strong>」 が目的です。
+    </p>
+
+    <div class="colab-step">
+      <span class="step-tag">📝 残りのルートを追加</span>
+<pre><code class="language-python">@route("GET", "/api/gacha/list")
+def gacha_list(h):
+    h._json(200, {"gachas": [
+        {"id": 1, "name": "通常ガチャ",      "price": 100, "pool_size": 12, "total_weight": 505},
+        {"id": 2, "name": "プレミアムガチャ", "price": 300, "pool_size":  7, "total_weight": 175},
+    ]})
+
+@route("POST", "/api/gacha/pull")
+def gacha_pull(h):
+    body = h._read_json()
+    h._json(200, {
+        "gacha":     {"id": body.get("gacha_id", 1), "name": "通常ガチャ", "price": 100},
+        "character": {"id": 10, "name": "ドラゴン", "rarity": 5, "emoji": "🐉"},
+        "obtained_at": "2026-04-26 14:30:00+00:00",
+        "coins": 900,
+    })
+
+@route("GET", "/api/box")
+def box(h):
+    h._json(200, {
+        "user": {"id": 1, "name": "alice", "display_name": "alice", "coins": 900},
+        "total_pulls": 1,
+        "items": [{
+            "id": 10, "name": "ドラゴン", "rarity": 5, "emoji": "🐉", "count": 1,
+            "first_obtained_at": "2026-04-26 14:30:00+00:00",
+            "last_obtained_at":  "2026-04-26 14:30:00+00:00",
+        }],
+    })
+
+@route("POST", "/api/login")
+def login(h):
+    body = h._read_json()
+    h._json(200, {"user": {"id": 1, "name": body.get("name", "alice"),
+                            "display_name": body.get("name", "alice"), "coins": 1000}})
+
+@route("POST", "/api/logout")
+def logout(h):
+    h._json(200, {"ok": True})</code></pre>
+    </div>
+
+    <p>サーバ再起動 → ブラウザでリロード → 新規登録 → 「引く」ボタン押下。</p>
+
+    <div class="expected-output">
+      <span class="lbl">🎉 期待される結果</span>
+      <ul>
+        <li>登録 → ガチャ画面 → 「引く」 → 必ず <strong>ドラゴン (★★★★★)</strong> が出る (笑)</li>
+        <li>Box にドラゴンが 1 体入る</li>
+        <li>デバッグコンソールがすべての往復で緑色 ( ✓ 期待形式)</li>
+      </ul>
+    </div>
+
+    <h2>3.11 ハードコードの限界と次章への橋渡し</h2>
+    <p>
+      ガチャを 5 回引いても 10 回引いても、 必ずドラゴンが出ます。 コインも常に 900。
+      <strong>これは当然です</strong> — サーバは body を見ずに固定値を返しているだけだから。
+    </p>
+    <p>
+      でも仕組みとしては:
+    </p>
     <ul>
-      <li><span class="file-ref">docker-compose.yml</span></li>
-      <li><span class="file-ref">db/schema.sql</span> / <span class="file-ref">db/seed.sql</span></li>
+      <li>フロントが叩く API のパスはこれで全部 (= 仕様書通り)</li>
+      <li>応答 shape はフロントの期待と一致 (= 緑色)</li>
+      <li>あとは「サーバ側で本当のロジックを書く」 だけ</li>
     </ul>
 
-    <h2>演習の例</h2>
-    <ol>
-      <li>コンテナを起動 → 停止 → ボリュームを残したまま再起動。データが残ることを確認</li>
-      <li>schema.sql を変更してから <code>docker compose up</code> を再実行 → 反映されないことを確認</li>
-      <li><code>docker compose down -v</code> でボリュームごと消し、再投入されるか確認</li>
-      <li><code>docker compose exec db psql</code> 経由で SQL を実行</li>
-    </ol>
+    <p>
+      次章 (Ch.4) では <code>register</code> ハンドラの中で
+      <strong>PostgreSQL に <code>INSERT INTO users ...</code></strong> を発行し、
+      <code>RETURNING id</code> で実 id を取り、 結果を <code>"user"</code> に詰めて返すように書き換えます。
+      ハードコード → DB 連携の <strong>1 ハンドラずつスパイラル</strong> を回していきます。
+    </p>
+
+    <h2>本章のまとめ</h2>
+    <ul>
+      <li>Colab を卒業してローカル環境で作業 (Python + Docker)</li>
+      <li>本番想定の <strong>PostgreSQL を Docker で 1 行起動</strong></li>
+      <li>Ch.1 で育てたサーバをそのまま <code>my_server.py</code> として配置</li>
+      <li>既製のフロント (<code>web/</code>) と組み合わせて、ブラウザで「フロント → サーバ」 が成立</li>
+      <li>サーバ → 鸚鵡返し → 期待形式に整える、 という<strong>スパイラルが回り始めた</strong></li>
+      <li>各 API を仕様通りの形で <em>とりあえずハードコード</em> で返せば、 フロントは全機能動く</li>
+      <li>ハードコードでは「同じ結果しか返らない」 限界 → DB を繋ぐ動機 (Ch.4)</li>
+    </ul>
 
     <div class="pager">
-      <a class="prev" href="./ch02-database.html"><span class="lbl">前へ</span><span class="ttl">← 第 2 章</span></a>
-      <a class="next" href="./ch04-psycopg.html"><span class="lbl">次へ</span><span class="ttl">第 4 章 psycopg 入門 →</span></a>
+      <a class="prev" href="./ch02-database.html">
+        <span class="lbl">前へ</span>
+        <span class="ttl">← 第 2 章 データベース基礎</span>
+      </a>
+      <a class="next" href="./ch04-psycopg.html">
+        <span class="lbl">次へ</span>
+        <span class="ttl">第 4 章 psycopg で本物のDBに繋ぐ →</span>
+      </a>
     </div>
   </main>
 </div>

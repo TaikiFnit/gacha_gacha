@@ -3,38 +3,55 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>gacha_gacha</title>
+<title>gacha_gacha (学習モード)</title>
 <link rel="stylesheet" href="./style.css">
 </head>
 <body>
+
 <header>
   <h1>🎰 gacha_gacha</h1>
+  <div class="api-config">
+    <label>API
+      <input id="api-base-input" value="http://localhost:8000" size="26"
+             title="ガチャサーバの URL">
+    </label>
+    <span id="api-status" class="api-status idle" title="状態">●</span>
+    <button id="ping-btn" class="secondary" type="button">疎通確認</button>
+  </div>
   <div id="user-area">
     <span id="welcome" hidden></span>
     <button id="logout-btn" hidden>ログアウト</button>
   </div>
 </header>
 
-<main>
-  <!-- ログイン/登録 -->
+<!-- ============================================================== -->
+<!-- ステージ — 通常UI (期待形式が揃ったときに動く)                    -->
+<!-- ============================================================== -->
+<main class="stage">
+
   <section id="auth-section">
     <div class="card">
       <h2>ログイン or 新規登録</h2>
       <p class="hint">同じフォームで両方できます。新規ユーザーには 1000 coin が配られます。</p>
       <form id="auth-form">
-        <label>name <input name="name" autocomplete="username" required minlength="3"></label>
-        <label>password <input name="password" type="password" autocomplete="current-password" required minlength="6"></label>
-        <label>display name (登録時のみ) <input name="display_name" autocomplete="nickname"></label>
+        <label>name
+          <input name="name" autocomplete="username" required minlength="3" value="alice">
+        </label>
+        <label>password
+          <input name="password" type="password" autocomplete="current-password"
+                 required minlength="6" value="secret123">
+        </label>
+        <label>display name (登録時のみ)
+          <input name="display_name" autocomplete="nickname">
+        </label>
         <div class="row">
           <button type="submit" data-mode="login">ログイン</button>
           <button type="submit" data-mode="register">新規登録</button>
         </div>
       </form>
-      <p id="auth-error" class="error" hidden></p>
     </div>
   </section>
 
-  <!-- ガチャ -->
   <section id="play-section" hidden>
     <div class="card">
       <h2>ガチャを引く</h2>
@@ -46,14 +63,32 @@
     <div class="card">
       <h2>📦 Box (所持キャラ)</h2>
       <p><span id="total-pulls">0</span> 回引いた / <span id="unique-count">0</span> 種類</p>
-      <button id="reload-box-btn">最新化</button>
+      <button id="reload-box-btn" class="secondary">最新化</button>
       <div id="box" class="box-grid"></div>
     </div>
   </section>
+
+  <!-- アクション直後のフィードバック表示。 期待形式から外れた応答が来たらここに raw が出る -->
+  <section id="feedback" class="feedback" hidden></section>
 </main>
 
+<!-- ============================================================== -->
+<!-- 🔍 デバッグコンソール — 常時表示。 サーバとの全往復を監視する         -->
+<!-- ============================================================== -->
+<aside class="debug">
+  <div class="debug-head">
+    <strong>🔍 デバッグコンソール</strong>
+    <span class="debug-hint">サーバとフロントの往復を全て表示します。 学習モード専用の窓。</span>
+    <button id="debug-clear" class="secondary" type="button">クリア</button>
+  </div>
+  <div id="debug-log" class="debug-log">
+    <p class="debug-empty">まだリクエストが投げられていません。 上のフォームから何かしてみてください。</p>
+  </div>
+</aside>
+
 <footer>
-  <small>API: <code id="api-base"></code> ｜ ソース: <code>server/app.py</code></small>
+  <small>ソース: <code>web/index.html</code> / <code>web/app.js</code> ｜
+    API 仕様: <a href="../docs/api-spec.html" target="_blank">docs/api-spec.html</a></small>
 </footer>
 
 <script src="./app.js" type="module"></script>
