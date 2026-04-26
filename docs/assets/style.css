@@ -88,8 +88,51 @@ pre {
   padding: 16px 18px; border-radius: 10px; overflow-x: auto;
   font-size: 13.5px; line-height: 1.7;
   margin: 16px 0;
+  position: relative;
 }
 pre code { background: transparent; color: inherit; padding: 0; }
+pre .copy-btn {
+  position: absolute; top: 6px; right: 6px;
+  background: rgba(255, 255, 255, 0.08); color: var(--code-ink);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 3px 10px; border-radius: 6px;
+  font-size: 11px; cursor: pointer;
+  opacity: 0.7; transition: opacity 0.1s, background 0.1s;
+}
+pre:hover .copy-btn { opacity: 1; }
+pre .copy-btn:hover { background: rgba(255, 255, 255, 0.18); }
+pre .copy-btn.copied { background: #10b981; color: #fff;
+                       border-color: #10b981; opacity: 1; }
+
+/* Colab セル指示用 */
+.colab-step {
+  border-left: 4px solid #f9ab00;          /* Colab の黄 */
+  background: #fffbeb;
+  padding: 12px 16px; border-radius: 6px; margin: 18px 0;
+}
+.colab-step .step-tag {
+  display: inline-block; background: #f9ab00; color: white;
+  font-weight: bold; font-size: 11px;
+  padding: 2px 8px; border-radius: 4px; margin-right: 8px;
+  letter-spacing: 0.5px;
+}
+.expected-output {
+  border-left: 4px solid #10b981;
+  background: #f0fdf4;
+  padding: 8px 14px; border-radius: 6px; margin: 12px 0;
+  font-size: 13px;
+}
+.expected-output .lbl { color: #059669; font-weight: bold;
+                        font-size: 11px; letter-spacing: 0.5px; }
+.expected-output pre {
+  margin-top: 6px;
+  background: #064e3b; color: #d1fae5;
+  font-size: 12.5px; padding: 10px 14px;
+}
+
+/* Colab badge */
+.colab-badge { display: inline-block; vertical-align: middle; margin: 8px 0; }
+.colab-badge img { vertical-align: middle; }
 
 /* ----- callout ----- */
 .callout {

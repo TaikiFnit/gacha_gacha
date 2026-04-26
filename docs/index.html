@@ -12,35 +12,43 @@
   <main>
     <div class="meta-bar">
       <span class="badge">教材</span>
-      <span>所要時間: 完走で 12〜18 時間</span>
+      <span>所要時間: 完走で 8〜12 時間</span>
+      <span>動作環境: Google Colab (推奨) / ローカル</span>
     </div>
 
     <h1>📘 gacha_gacha — バックエンドとデータベースを「自分の手」で覚える</h1>
 
     <p>
       この教材は、ガチャシステムを題材にして
-      <strong>HTTP サーバー / PostgreSQL / Python</strong>
-      を一気通貫で学ぶための連動ドキュメントです。
-      隣のディレクトリ <code>../server/</code> <code>../db/</code> <code>../web/</code>
-      に置いてあるコードをそのまま読みながら進めます。
+      <strong>HTTP サーバー / SQL / Python</strong>
+      を、<strong>Google Colab</strong> 上で 1 セルずつコードを動かしながら学ぶ連動ドキュメントです。
+      最終的にはブラウザでガチャを引ける Web アプリ一式が、教材通りに進めるだけで手元に組み上がります。
+    </p>
+
+    <p class="colab-badge">
+      <a href="https://colab.research.google.com/github/taikifnit/gacha_gacha/blob/master/gacha_gacha.ipynb" target="_blank">
+        <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open in Colab">
+      </a>
+      &nbsp;ノートブック完成版 (答え)。 教材と並行して開いておくと比較しやすい。
     </p>
 
     <div class="callout tip">
       <span class="label">💡 学び方</span>
-      <p>各章は「読んで終わり」ではなく、<strong>自分で 1 ステップずつ書いて積み上げる</strong>
-        構成です。<code>exercises/chXX/stepN_*.{py,sql}</code> に各ステップの
-        「答え」が置いてあります。まずは<strong>見ずに</strong>課題を解き、
-        詰まったら答えを開いて差分を読み、動いたら宿題に進む、というループを回してください。</p>
-      <p>最終的に手元に積み上がったコードは、リポジトリ直下の <code>server/</code> /
-        <code>db/</code> と<strong>ほぼ同じ形</strong>になります。フルセット (= 答え) は
-        いつでもそこから読めます。</p>
+      <p>各章は「📒 セル N」 という見出し付きのコードブロックで構成されています。
+        Colab に <strong>新しいセルを追加 → 右上の Copy ボタンでコピー → 貼り付け → Shift+Enter</strong>
+        を順に繰り返すだけで、章の最後まで進められます。</p>
+      <p>各セルの直後に「✅ 期待される出力」 が載せてあります。
+        ここまで進めばコピペオンリーで完走できますが、慣れてきたら
+        <strong>セルを書き換えて壊し、出力がどう変わるか</strong> を観察すると吸収が深まります。</p>
     </div>
 
     <div class="callout note">
       <span class="label">✅ 動作保証</span>
-      本リポジトリの <code>server/app.py</code> は <code>tests/test_e2e_sqlite.py</code>
-      で 27 ケースの E2E 検証を通っています。手元で確認するには
-      <code>python tests/test_e2e_sqlite.py</code> (Docker 不要) を実行してください。
+      <p>本リポジトリの <code>server/app.py</code> は <code>tests/test_e2e_sqlite.py</code>
+        で 27 ケースの E2E 検証を通っています。各章のコピペコード自体も、
+        書き起こした順に実行して期待出力が出ることを確認済みです。</p>
+      <p>本格的な PostgreSQL + Docker での確認は <code>docker compose up -d</code>
+        後 <code>bash tests/smoke_curl.sh</code>。</p>
     </div>
 
     <h2>このシリーズで作るもの</h2>
@@ -115,10 +123,9 @@
 
     <h2>使うもの</h2>
     <ul>
-      <li>Python 3.10 以上</li>
-      <li>Docker / Docker Compose</li>
-      <li>好きなテキストエディタ</li>
-      <li>ブラウザの開発者ツール (Network タブを使えると吉)</li>
+      <li>Web ブラウザ (Chrome / Edge / Firefox / Safari)</li>
+      <li>Google アカウント (Colab 用、無料)</li>
+      <li>余裕があれば: ローカル環境 (Python 3.10+ + Docker) で本番想定の PG にも触ってみる</li>
     </ul>
 
     <div class="pager">
@@ -131,5 +138,6 @@
   </main>
 </div>
 <script src="./assets/inject-toc.js"></script>
+<script src="./assets/copy-button.js"></script>
 </body>
 </html>

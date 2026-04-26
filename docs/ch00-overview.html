@@ -12,8 +12,8 @@
   <main>
     <div class="meta-bar">
       <span class="badge">Chapter 0</span>
-      <span>所要時間: 30 分</span>
-      <span>動かすもの: なし (読み物中心)</span>
+      <span>所要時間: 30〜40 分</span>
+      <span>動かすもの: Google Colab で新規ノートブック</span>
     </div>
     <h1>第 0 章 — 全体像と学び方</h1>
 
@@ -156,24 +156,75 @@
       <li><strong>直す</strong>。直しながら、なぜそれで動くのかを言語化する</li>
     </ol>
 
-    <div class="callout try">
-      <span class="label">🛠 やってみる</span>
-      第 1 章に入る前に、まずローカルでサーバーが起動できるか確認しておくと
-      スムーズです。プロジェクト直下で:
-      <pre><code>docker compose up -d
-python -m venv .venv &amp;&amp; source .venv/bin/activate
-pip install -r server/requirements.txt
-python -m server.app</code></pre>
-      <p>「listening on http://localhost:8000」と出たら準備完了。</p>
+    <h2>0.6 Colab を開いて作業環境を作る</h2>
+    <p>
+      この教材は <strong>Google Colab</strong> 前提で作ってあります。
+      ブラウザだけあれば良く、Python も SQLite も最初から入っています。
+      (本格運用のローカル/Docker版は最後の章で扱います)
+    </p>
+
+    <ol>
+      <li><a href="https://colab.research.google.com/" target="_blank">Google Colab</a> をブラウザで開く</li>
+      <li>「ファイル」→「ノートブックを新規作成」 (もしくは中央の「+ 新規ノートブック」)</li>
+      <li>左上のファイル名を <code>gacha_gacha.ipynb</code> 等に変更しておく</li>
+    </ol>
+
+    <div class="colab-step">
+      <span class="step-tag">📒 セル 1</span>
+      最初のセルに以下をコピペして <kbd>Shift + Enter</kbd> で実行してください。
+      作業フォルダができ、以降のセルから相対パスで使えるようになります。
+<pre><code class="language-python">import os, pathlib, sys
+
+# Colab なら /content の下、ローカルなら現在地の下に作業フォルダを切る
+if pathlib.Path("/content").exists():
+    ROOT = pathlib.Path("/content/gacha_gacha")
+else:
+    ROOT = pathlib.Path.cwd() / "gacha_gacha_workspace"
+ROOT.mkdir(exist_ok=True, parents=True)
+
+for sub in ["db", "server", "web", "exercises/ch01", "exercises/ch02"]:
+    (ROOT / sub).mkdir(exist_ok=True, parents=True)
+
+os.chdir(ROOT)
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+print("✅ 作業ディレクトリ:", ROOT)
+print("   中身:", sorted(p.name for p in ROOT.iterdir()))</code></pre>
     </div>
 
-    <h2>0.6 困ったとき</h2>
+    <div class="expected-output">
+      <span class="lbl">✅ 期待される出力</span>
+<pre><code>✅ 作業ディレクトリ: /content/gacha_gacha
+   中身: ['db', 'exercises', 'server', 'web']</code></pre>
+    </div>
+
+    <p>
+      これで「Colab というキャンバスに、自分の作業場を 1 区画切った」状態になりました。
+      第1章からは各章の指示通りに <strong>新しいセルを追加してコピペ → Shift+Enter</strong>
+      を繰り返すだけで、最終的にガチャゲームが Colab 内で動く所まで進みます。
+    </p>
+
+    <div class="callout note">
+      <span class="label">📝 Colab の Tips</span>
+      <ul>
+        <li>新しいセル: メニューの「+ コード」、または最後のセルの下にカーソルを置いて <kbd>Ctrl/Cmd + M, B</kbd></li>
+        <li>セル実行: <kbd>Shift + Enter</kbd> (実行 + 次に進む) / <kbd>Ctrl/Cmd + Enter</kbd> (実行のみ)</li>
+        <li>シェルコマンドは行頭に <code>!</code> を付ける (例: <code>!ls -la</code>)</li>
+        <li>セッションが切れた = もう一度<strong>上から</strong>セルを実行し直せばOK</li>
+      </ul>
+    </div>
+
+    <h2>0.7 困ったとき</h2>
     <ul>
-      <li>DB が起動しない → <code>docker compose logs db</code> でログを確認</li>
-      <li>Python が import できない → 仮想環境がアクティブか確認 (<code>which python</code>)</li>
-      <li>ブラウザでログインできない → 開発者ツール「Network」タブで API のステータスを見る</li>
-      <li>「もう全部わからない」→ <strong>章を 1 つ戻す</strong>。
+      <li>セルが赤くエラー → エラーメッセージの<strong>最後の 1 行</strong>を読む。
+          Python のエラーは大抵、最後の行に「何が」「どこで」起きたかが書いてある</li>
+      <li>「ImportError: No module named ...」 → セル 1 (環境セットアップ) を再実行</li>
+      <li>「Address already in use」 → 同じポートを使うサーバーが既に起動している。
+          ランタイムを「再起動」するか、別ポートを使う</li>
+      <li>「もう全部わからない」 → <strong>章を 1 つ戻す</strong>。
           下の層の理解が足りていないことが多いです</li>
+      <li>ランタイム切断 → 上から<strong>もう一度セルを順に実行</strong>。 状態は揮発するので諦めて再実行が早い</li>
     </ul>
 
     <div class="pager">
@@ -189,5 +240,6 @@ python -m server.app</code></pre>
   </main>
 </div>
 <script src="./assets/inject-toc.js"></script>
+<script src="./assets/copy-button.js"></script>
 </body>
 </html>

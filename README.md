@@ -1,14 +1,25 @@
 # gacha_gacha — データベース学習用ガチャシステム
 
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/taikifnit/gacha_gacha/blob/master/gacha_gacha.ipynb)
+
 このリポジトリは「自分の手でバックエンドを建てて、データベースの基礎を体で覚える」ための
 学習プロジェクトです。Web ブラウザで動くごく小さなガチャゲームを題材に、
 
 - HTTP サーバーが受け付けるリクエストの中身
-- PostgreSQL のテーブル設計と SQL
+- SQL とテーブル設計 (SQLite で導入 → PostgreSQL で本番想定)
 - Python から DB を触る感触
 - ガチャ抽選ロジック (重み付き乱択) の実装
 
 を、フレームワークの魔法に頼らず、**ほぼ Python 標準ライブラリと生SQL** だけで作ってあります。
+
+## まず最初に — 教材を開く
+
+教材は **[docs/index.html](docs/index.html)** から始まります。Google Colab を開きながら、
+各章の指示通りに「新しいセルにコピペ → Shift+Enter」 を繰り返すだけで進みます。
+
+- 教材 (HTML, GitHub Pages 配信予定): `docs/index.html`
+- 全章のコピペ済みノートブック (答え): `gacha_gacha.ipynb`
+- 本物のサーバー一式 (本番想定): `server/`, `db/`, `web/`
 
 > ⚠️ プロダクション用ではありません。学習目的で読みやすさを最優先にしています。
 > パスワード保護やセッション管理も「最低限の安全」レベルにとどめています。
@@ -118,6 +129,37 @@ bash tests/smoke_curl.sh
 ### 教材サイト
 
 教材サイトは `docs/index.html` をブラウザで直接開くだけで読めます。
+
+---
+
+## GitHub に公開する
+
+このリポジトリを GitHub に公開して、`Open in Colab` バッジから直接 Colab に
+ノートブックを開けるようにする手順:
+
+```bash
+# 1. https://github.com/new で空のリポジトリを作成
+#    名前は taikifnit/gacha_gacha (README/.gitignore は付けない)
+
+# 2. ローカルから push
+git remote add origin git@github.com:taikifnit/gacha_gacha.git
+git branch -M master                  # main にしたければ -M main
+git push -u origin master
+
+# 3. (任意) GitHub Pages で docs/ を公開
+#    Settings → Pages → Source: Deploy from a branch
+#    Branch: master / Folder: /docs
+```
+
+公開後、 `Open in Colab` バッジは
+`https://colab.research.google.com/github/<user>/<repo>/blob/<branch>/gacha_gacha.ipynb`
+で開きます。 リポジトリ名やユーザー名を変えた場合は `README.md` と `docs/index.html` の URL を一緒に書き換えてください。
+
+```bash
+# 一括置換するなら
+grep -rl "taikifnit/gacha_gacha" . --include='*.md' --include='*.html' \
+  | xargs sed -i '' 's|taikifnit/gacha_gacha|<NEW_USER>/<NEW_REPO>|g'
+```
 
 ```bash
 # 教材も http で配信したい場合

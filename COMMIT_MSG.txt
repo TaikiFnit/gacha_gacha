@@ -1,0 +1,22 @@
+feat: rewrite Ch.0/1/2 as Colab-instruction tutorials
+
+- Each chapter section now embeds the actual code inline with
+  '📒 セル N → コピペ → Shift+Enter → 期待される出力' format.
+  Learners build up the system by copying cells into Colab.
+- Ch.0: add 'Colabを開いて作業環境を作る' section with first cell.
+- Ch.1: 6 self-contained server cells (TCP socket → http.server →
+  routing → POST/JSON → router-dict → exception-to-JSON), each
+  spawns a server in a thread, hits it from the same cell, and shuts down.
+- Ch.2: 8 chained sqlite3 cells covering schema, constraints,
+  many-to-many, transactions, JOIN+aggregation, deliberate violations.
+  Setup cell uses isolation_level=None so explicit BEGIN/COMMIT works.
+  run() helper does East-Asian-width-aware column padding.
+- Add docs/assets/copy-button.js: per-block 'Copy' button on every
+  <pre>. Hooked into all 11 chapter pages.
+- docs/index.html: switch hero to Colab-first ('Open in Colab' badge).
+- README: add Colab badge, GitHub publishing instructions
+  (git push / Pages), placeholder taikifnit/gacha_gacha.
+
+Verified by extracting code blocks from each chapter HTML and
+running them: Ch.1 6/6 pass independently, Ch.2 8/8 pass in sequence.
+test_unit.py and test_e2e_sqlite.py (27/27) still green.
