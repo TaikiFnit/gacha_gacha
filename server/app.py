@@ -22,7 +22,6 @@
 
 from __future__ import annotations
 
-import http.cookies
 import json
 import os
 import sys
@@ -40,17 +39,10 @@ from .db import get_conn, healthcheck
 # ---------------------------------------------------------------------------
 APP_PORT = int(os.getenv("APP_PORT", "8000"))
 
-# CORS: 開発時にフロントを別ポート (例: 5500) で配信できるよう、
-# 学習用としてゆるめに開けてある。本番ではきっちり絞る。
-ALLOWED_ORIGINS = {
-    "http://localhost:5500",
-    "http://127.0.0.1:5500",
-    f"http://localhost:{APP_PORT}",
-    f"http://127.0.0.1:{APP_PORT}",
-}
-
-SESSION_COOKIE = "gg_session"
-
+# CORS: 学習用にどこからでも叩けるよう全許可。
+# Cookie ベース認証 (= credentials: "include") を使う場合は wildcard が使えないため、
+# 本番化時にホワイトリストへ絞り直す前提。
+ALLOW_ALL_ORIGINS = True
 
 # ---------------------------------------------------------------------------
 # 例外クラス
@@ -93,24 +85,24 @@ class GachaHandler(BaseHTTPRequestHandler):
 
     # ---------- レスポンス補助 ----------
     def _cors_headers(self) -> None:
-        origin = self.headers.get("Origin", "")
-        if origin in ALLOWED_ORIGINS:
-            self.send_header("Access-Control-Allow-Origin", origin)
-            self.send_header("Access-Control-Allow-Credentials", "true")
-            self.send_header("Vary", "Origin")
+        if ALLOW_ALL_ORIGINS:
+            self.send_header("Access-Control-Allow-Origin", "*")
+        else:
+            # ホワイトリスト運用したい場合のフォールバック
+            origin = self.headers.get("Origin", "")
+            if origin:
+                self.send_header("Access-Control-Allow-Origin", origin)
+                self.send_header("Access-Control-Allow-Credentials", "true")
+                self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
 
-    def send_json(self, status: int, payload: Any,
-                  set_cookie: http.cookies.SimpleCookie | None = None) -> None:
+    def send_json(self, status: int, payload: Any) -> None:
         body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
         self.send_response(status)
         self._cors_headers()
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
-        if set_cookie is not None:
-            for morsel in set_cookie.values():
-                self.send_header("Set-Cookie", morsel.OutputString())
         self.end_headers()
         self.wfile.write(body)
 
@@ -128,17 +120,15 @@ class GachaHandler(BaseHTTPRequestHandler):
             raise bad_request("JSON の最上位はオブジェクトにしてください")
         return data
 
-    def get_cookie(self, name: str) -> str:
-        raw = self.headers.get("Cookie", "")
-        if not raw:
+    def get_bearer_token(self) -> str:
+        """Authorization: Bearer <token> ヘッダから token 文字列を取り出す。"""
+        h = self.headers.get("Authorization", "")
+        if not h.lower().startswith("bearer "):
             return ""
-        jar = http.cookies.SimpleCookie()
-        jar.load(raw)
-        morsel = jar.get(name)
-        return morsel.value if morsel else ""
+        return h.split(" ", 1)[1].strip()
 
     def require_user(self, conn) -> dict:
-        token = self.get_cookie(SESSION_COOKIE)
+        token = self.get_bearer_token()
         user = auth.lookup_session(conn, token)
         if user is None:
             raise unauthorized()
@@ -184,28 +174,6 @@ def _user_payload(u: dict) -> dict:
     }
 
 
-def _make_session_cookie(token: str) -> http.cookies.SimpleCookie:
-    jar = http.cookies.SimpleCookie()
-    jar[SESSION_COOKIE] = token
-    m = jar[SESSION_COOKIE]
-    m["path"] = "/"
-    m["httponly"] = True
-    m["samesite"] = "Lax"
-    m["max-age"] = int(auth.SESSION_TTL.total_seconds())
-    return jar
-
-
-def _clear_session_cookie() -> http.cookies.SimpleCookie:
-    jar = http.cookies.SimpleCookie()
-    jar[SESSION_COOKIE] = ""
-    m = jar[SESSION_COOKIE]
-    m["path"] = "/"
-    m["httponly"] = True
-    m["samesite"] = "Lax"
-    m["max-age"] = 0
-    return jar
-
-
 # ===========================================================================
 # ルート定義
 # ===========================================================================
@@ -237,8 +205,9 @@ def register(h: GachaHandler) -> None:
             user = cur.fetchone()
         token, _ = auth.create_session(conn, user["id"])
 
-    h.send_json(200, {"user": _user_payload(user)},
-                set_cookie=_make_session_cookie(token))
+    # Bearer Token はレスポンス本文に含めて返す。
+    # クライアントは以後 Authorization: Bearer <token> ヘッダで送る。
+    h.send_json(200, {"user": _user_payload(user), "token": token})
 
 
 @route("POST", "/api/login")
@@ -258,17 +227,16 @@ def login(h: GachaHandler) -> None:
             raise AppError(401, "name か password が違います")
         token, _ = auth.create_session(conn, user["id"])
 
-    h.send_json(200, {"user": _user_payload(user)},
-                set_cookie=_make_session_cookie(token))
+    h.send_json(200, {"user": _user_payload(user), "token": token})
 
 
 @route("POST", "/api/logout")
 def logout(h: GachaHandler) -> None:
-    token = h.get_cookie(SESSION_COOKIE)
+    token = h.get_bearer_token()
     if token:
         with get_conn() as conn:
             auth.delete_session(conn, token)
-    h.send_json(200, {"ok": True}, set_cookie=_clear_session_cookie())
+    h.send_json(200, {"ok": True})
 
 
 @route("GET", "/api/me")

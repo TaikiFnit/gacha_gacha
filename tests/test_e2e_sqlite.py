@@ -83,11 +83,11 @@ def expect(label: str, cond: bool, detail: str = "") -> None:
         print(f"  FAIL  {label}  {detail}")
 
 
-# Persistent client to keep the cookie across requests
+# Persistent client. Bearer Token を保持して Authorization ヘッダで送る。
 class Client:
     def __init__(self, host: str, port: int):
         self.host, self.port = host, port
-        self.cookie: str | None = None
+        self.token: str | None = None
 
     def request(self, method: str, path: str, body=None
                 ) -> tuple[int, dict, dict]:
@@ -97,27 +97,25 @@ class Client:
             data = json.dumps(body).encode("utf-8")
             headers["Content-Type"] = "application/json"
             headers["Content-Length"] = str(len(data))
-        if self.cookie:
-            headers["Cookie"] = self.cookie
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
         conn = http.client.HTTPConnection(self.host, self.port, timeout=5)
         conn.request(method, path, body=data, headers=headers)
         resp = conn.getresponse()
         raw = resp.read()
-        # capture Set-Cookie
-        sc = resp.getheader("Set-Cookie")
-        if sc:
-            # trivial parsing: take the part before first ';'
-            self.cookie = sc.split(";", 1)[0]
         try:
             payload = json.loads(raw) if raw else {}
         except json.JSONDecodeError:
             payload = {"_raw": raw.decode(errors="replace")}
+        # capture token from response body
+        if isinstance(payload, dict) and isinstance(payload.get("token"), str):
+            self.token = payload["token"]
         out_headers = {k.lower(): v for k, v in resp.getheaders()}
         conn.close()
         return resp.status, payload, out_headers
 
-    def clear_cookie(self) -> None:
-        self.cookie = None
+    def clear_cookie(self) -> None:    # 互換のため名前は残す
+        self.token = None
 
 
 def start_server() -> threading.Thread:

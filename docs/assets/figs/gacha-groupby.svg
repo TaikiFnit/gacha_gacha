@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 380" font-family="sans-serif">
+  <defs>
+    <marker id="gba" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#4f46e5"/>
+    </marker>
+  </defs>
+
+  <text x="450" y="22" text-anchor="middle" font-size="14" font-weight="bold" fill="#1f2937">
+    GROUP BY character_id, COUNT(*) で「キャラごとの所持数」 を出す
+  </text>
+
+  <!-- ===== LEFT: input rows (color-coded by character_id) ===== -->
+  <g transform="translate(20, 50)">
+    <text x="155" y="-6" font-size="12" fill="#6b7280">user_characters (alice の履歴)</text>
+    <rect x="0" y="0" width="310" height="280" fill="none" stroke="#1a1a2e" stroke-width="2"/>
+    <rect x="0" y="0" width="310" height="32" fill="#fecaca" stroke="#1a1a2e" stroke-width="2"/>
+    <text x="35"  y="20" text-anchor="middle" font-size="12" font-weight="bold">uc_id</text>
+    <text x="120" y="20" text-anchor="middle" font-size="12" font-weight="bold">character_id</text>
+    <text x="210" y="20" text-anchor="middle" font-size="12" font-weight="bold">name</text>
+    <text x="280" y="20" text-anchor="middle" font-size="11" font-weight="bold">obt</text>
+    <line x1="70"  y1="0" x2="70"  y2="280" stroke="#1a1a2e"/>
+    <line x1="170" y1="0" x2="170" y2="280" stroke="#1a1a2e"/>
+    <line x1="250" y1="0" x2="250" y2="280" stroke="#1a1a2e"/>
+
+    <!-- rows: 1, 1, 3, 1, 5, 3, 1 -->
+    <g font-size="12">
+      <!-- char_id=1 group (light green) -->
+      <rect x="1"  y="33"  width="308" height="33" fill="#d1fae5"/>
+      <text x="35"  y="55" text-anchor="middle">1</text>
+      <text x="120" y="55" text-anchor="middle" font-weight="bold">1</text>
+      <text x="210" y="55" text-anchor="middle">スライム 🟢</text>
+      <text x="280" y="55" text-anchor="middle" font-size="9">10:00</text>
+      <line x1="0" y1="66" x2="310" y2="66" stroke="#1a1a2e" stroke-width="0.5"/>
+
+      <rect x="1"  y="66"  width="308" height="33" fill="#d1fae5"/>
+      <text x="35"  y="88" text-anchor="middle">2</text>
+      <text x="120" y="88" text-anchor="middle" font-weight="bold">1</text>
+      <text x="210" y="88" text-anchor="middle">スライム 🟢</text>
+      <text x="280" y="88" text-anchor="middle" font-size="9">10:01</text>
+      <line x1="0" y1="99" x2="310" y2="99" stroke="#1a1a2e" stroke-width="0.5"/>
+
+      <!-- char_id=3 group (light blue) -->
+      <rect x="1"  y="99"  width="308" height="33" fill="#dbeafe"/>
+      <text x="35"  y="121" text-anchor="middle">3</text>
+      <text x="120" y="121" text-anchor="middle" font-weight="bold">3</text>
+      <text x="210" y="121" text-anchor="middle">ゴブリン 👺</text>
+      <text x="280" y="121" text-anchor="middle" font-size="9">10:02</text>
+      <line x1="0" y1="132" x2="310" y2="132" stroke="#1a1a2e" stroke-width="0.5"/>
+
+      <!-- char_id=1 again -->
+      <rect x="1"  y="132" width="308" height="33" fill="#d1fae5"/>
+      <text x="35"  y="154" text-anchor="middle">4</text>
+      <text x="120" y="154" text-anchor="middle" font-weight="bold">1</text>
+      <text x="210" y="154" text-anchor="middle">スライム 🟢</text>
+      <text x="280" y="154" text-anchor="middle" font-size="9">10:03</text>
+      <line x1="0" y1="165" x2="310" y2="165" stroke="#1a1a2e" stroke-width="0.5"/>
+
+      <!-- char_id=10 (gold) -->
+      <rect x="1"  y="165" width="308" height="33" fill="#fef3c7"/>
+      <text x="35"  y="187" text-anchor="middle">5</text>
+      <text x="120" y="187" text-anchor="middle" font-weight="bold">10</text>
+      <text x="210" y="187" text-anchor="middle">ドラゴン 🐉</text>
+      <text x="280" y="187" text-anchor="middle" font-size="9">10:04</text>
+      <line x1="0" y1="198" x2="310" y2="198" stroke="#1a1a2e" stroke-width="0.5"/>
+
+      <!-- char_id=3 again -->
+      <rect x="1"  y="198" width="308" height="33" fill="#dbeafe"/>
+      <text x="35"  y="220" text-anchor="middle">6</text>
+      <text x="120" y="220" text-anchor="middle" font-weight="bold">3</text>
+      <text x="210" y="220" text-anchor="middle">ゴブリン 👺</text>
+      <text x="280" y="220" text-anchor="middle" font-size="9">10:05</text>
+      <line x1="0" y1="231" x2="310" y2="231" stroke="#1a1a2e" stroke-width="0.5"/>
+
+      <!-- char_id=1 again -->
+      <rect x="1"  y="231" width="308" height="33" fill="#d1fae5"/>
+      <text x="35"  y="253" text-anchor="middle">7</text>
+      <text x="120" y="253" text-anchor="middle" font-weight="bold">1</text>
+      <text x="210" y="253" text-anchor="middle">スライム 🟢</text>
+      <text x="280" y="253" text-anchor="middle" font-size="9">10:06</text>
+    </g>
+  </g>
+
+  <!-- ===== arrow + label ===== -->
+  <line x1="370" y1="180" x2="500" y2="180" stroke="#4f46e5" stroke-width="2.5" marker-end="url(#gba)"/>
+  <text x="435" y="170" text-anchor="middle" font-size="13" font-weight="bold" fill="#4f46e5">
+    GROUP BY character_id
+  </text>
+  <text x="435" y="200" text-anchor="middle" font-size="11" fill="#4f46e5">
+    + COUNT(*)
+  </text>
+
+  <!-- ===== RIGHT: aggregated result ===== -->
+  <g transform="translate(515, 100)">
+    <text x="180" y="-6" font-size="12" fill="#6b7280">集計結果 (3 行に圧縮)</text>
+    <rect x="0" y="0" width="360" height="180" fill="none" stroke="#4f46e5" stroke-width="2"/>
+    <rect x="0" y="0" width="360" height="32" fill="#eef2ff" stroke="#4f46e5" stroke-width="2"/>
+    <text x="55"  y="20" text-anchor="middle" font-size="12" font-weight="bold">character_id</text>
+    <text x="200" y="20" text-anchor="middle" font-size="12" font-weight="bold">name</text>
+    <text x="320" y="20" text-anchor="middle" font-size="12" font-weight="bold">COUNT(*)</text>
+    <line x1="110" y1="0" x2="110" y2="180" stroke="#4f46e5"/>
+    <line x1="290" y1="0" x2="290" y2="180" stroke="#4f46e5"/>
+
+    <g font-size="13">
+      <rect x="1"  y="33"  width="358" height="48" fill="#d1fae5"/>
+      <text x="55"  y="62" text-anchor="middle" font-weight="bold">1</text>
+      <text x="200" y="62" text-anchor="middle">スライム 🟢</text>
+      <text x="320" y="62" text-anchor="middle" font-weight="bold">3</text>
+      <line x1="0" y1="81" x2="360" y2="81" stroke="#4f46e5" stroke-width="0.5"/>
+
+      <rect x="1"  y="81" width="358" height="48" fill="#dbeafe"/>
+      <text x="55"  y="110" text-anchor="middle" font-weight="bold">3</text>
+      <text x="200" y="110" text-anchor="middle">ゴブリン 👺</text>
+      <text x="320" y="110" text-anchor="middle" font-weight="bold">2</text>
+      <line x1="0" y1="129" x2="360" y2="129" stroke="#4f46e5" stroke-width="0.5"/>
+
+      <rect x="1"  y="129" width="358" height="48" fill="#fef3c7"/>
+      <text x="55"  y="158" text-anchor="middle" font-weight="bold">10</text>
+      <text x="200" y="158" text-anchor="middle">ドラゴン 🐉</text>
+      <text x="320" y="158" text-anchor="middle" font-weight="bold">1</text>
+    </g>
+
+    <text x="180" y="200" text-anchor="middle" font-size="11" fill="#4f46e5">
+      同じ character_id の行は 1 つに「束ねられ」、 個数は COUNT で出る
+    </text>
+  </g>
+</svg>

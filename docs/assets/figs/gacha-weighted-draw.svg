@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 360" font-family="sans-serif">
+  <defs>
+    <marker id="wd-a" markerWidth="10" markerHeight="8" refX="0" refY="4" orient="auto">
+      <polygon points="10 0, 0 4, 10 8" fill="#E6002D"/>
+    </marker>
+  </defs>
+
+  <text x="450" y="22" text-anchor="middle" font-size="14" font-weight="bold" fill="#1f2937">
+    重み付き乱択 — weight を「線分の長さ」 にして、 一様乱数の落ちた区間が当選キャラ
+  </text>
+
+  <!-- ===== 上段: weight 表 ===== -->
+  <g transform="translate(40, 50)">
+    <text x="0" y="-6" font-size="12" fill="#6b7280">通常ガチャの排出設定 (簡略版、 weight 合計 = 200)</text>
+    <rect x="0" y="0" width="820" height="60" fill="none" stroke="#1a1a2e" stroke-width="2"/>
+
+    <!-- segments scaled by weight (sum=200), bar 820 wide -->
+    <!-- スライム w=80, 80*820/200=328 -->
+    <rect x="0"   y="0" width="328" height="60" fill="#a7f3d0"/>
+    <text x="164" y="32" text-anchor="middle" font-size="13" font-weight="bold">🟢 スライム</text>
+    <text x="164" y="50" text-anchor="middle" font-size="11" fill="#065f46">w=80 (40%)</text>
+
+    <!-- コウモリ w=50, 50*820/200=205 -->
+    <rect x="328" y="0" width="205" height="60" fill="#bfdbfe"/>
+    <text x="430" y="32" text-anchor="middle" font-size="13" font-weight="bold">🦇 コウモリ</text>
+    <text x="430" y="50" text-anchor="middle" font-size="11" fill="#1e40af">w=50 (25%)</text>
+
+    <!-- ナイト w=40, 40*820/200=164 -->
+    <rect x="533" y="0" width="164" height="60" fill="#ddd6fe"/>
+    <text x="615" y="32" text-anchor="middle" font-size="13" font-weight="bold">🛡️ ナイト</text>
+    <text x="615" y="50" text-anchor="middle" font-size="11" fill="#5b21b6">w=40 (20%)</text>
+
+    <!-- ペガサス w=20, 20*820/200=82 -->
+    <rect x="697" y="0" width="82" height="60" fill="#fde68a"/>
+    <text x="738" y="32" text-anchor="middle" font-size="12" font-weight="bold">🦄 ペガサス</text>
+    <text x="738" y="50" text-anchor="middle" font-size="10" fill="#92400e">w=20 (10%)</text>
+
+    <!-- ドラゴン w=10, 10*820/200=41 -->
+    <rect x="779" y="0" width="41" height="60" fill="#fca5a5"/>
+    <text x="800" y="32" text-anchor="middle" font-size="11" font-weight="bold">🐉</text>
+    <text x="800" y="50" text-anchor="middle" font-size="9" fill="#991b1b">5%</text>
+
+    <!-- segment dividers -->
+    <line x1="328" y1="0" x2="328" y2="60" stroke="#1a1a2e" stroke-width="1"/>
+    <line x1="533" y1="0" x2="533" y2="60" stroke="#1a1a2e" stroke-width="1"/>
+    <line x1="697" y1="0" x2="697" y2="60" stroke="#1a1a2e" stroke-width="1"/>
+    <line x1="779" y1="0" x2="779" y2="60" stroke="#1a1a2e" stroke-width="1"/>
+
+    <!-- axis under bar -->
+    <line x1="0"   y1="80" x2="820" y2="80" stroke="#1f2937" stroke-width="1.5"/>
+    <line x1="0"   y1="76" x2="0"   y2="84" stroke="#1f2937" stroke-width="1.5"/>
+    <line x1="820" y1="76" x2="820" y2="84" stroke="#1f2937" stroke-width="1.5"/>
+    <text x="0"   y="98" text-anchor="middle" font-size="11" fill="#1f2937">0</text>
+    <text x="328" y="98" text-anchor="middle" font-size="11" fill="#1f2937">80</text>
+    <text x="533" y="98" text-anchor="middle" font-size="11" fill="#1f2937">130</text>
+    <text x="697" y="98" text-anchor="middle" font-size="11" fill="#1f2937">170</text>
+    <text x="779" y="98" text-anchor="middle" font-size="11" fill="#1f2937">190</text>
+    <text x="820" y="98" text-anchor="middle" font-size="11" fill="#1f2937">200</text>
+    <text x="410" y="115" text-anchor="middle" font-size="11" fill="#6b7280">累積 weight</text>
+  </g>
+
+  <!-- ===== 中段: 乱数 r が落ちる位置 ===== -->
+  <g transform="translate(40, 175)">
+    <!-- 乱数の値を例示: r = 142 → ナイト区間 -->
+    <line x1="0"   y1="20" x2="820" y2="20" stroke="#9ca3af" stroke-dasharray="4,3"/>
+
+    <!-- needle at x = 142 * 820/200 = 582 -->
+    <line x1="582" y1="-50" x2="582" y2="60" stroke="#E6002D" stroke-width="2.5" marker-end="url(#wd-a)"/>
+    <text x="582" y="-55" text-anchor="middle" font-size="13" font-weight="bold" fill="#E6002D">r = 142 (一様乱数)</text>
+    <text x="582" y="-72" text-anchor="middle" font-size="11" fill="#E6002D">random.uniform(0, 200)</text>
+
+    <!-- annotation -->
+    <text x="582" y="85" text-anchor="middle" font-size="13" font-weight="bold" fill="#5b21b6">→ ナイト 当選 🛡️</text>
+  </g>
+
+  <!-- ===== 下段: 累積和の説明 ===== -->
+  <g transform="translate(40, 290)">
+    <text x="0" y="0" font-size="11" fill="#6b7280" font-family="monospace">
+      実装: cum = 0; for each item: cum += w; if r &lt;= cum: return item
+    </text>
+    <text x="0" y="18" font-size="11" fill="#6b7280" font-family="monospace">
+      Python なら random.choices(pool, weights=[80, 50, 40, 20, 10], k=1) が同じ動作
+    </text>
+    <text x="0" y="40" font-size="12" font-weight="bold" fill="#1f2937">
+      重み 1 単位の長さ&times;weight が「当たり区間の幅」 になる。 区間が長い = 出やすい
+    </text>
+  </g>
+</svg>

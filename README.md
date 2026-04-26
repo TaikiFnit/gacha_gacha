@@ -51,13 +51,13 @@ gacha_gacha/
 │   ├── ch00-overview.html
 │   ├── ch01-http.html
 │   ├── ch02-database.html
-│   ├── ch03-postgres-docker.html
-│   ├── ch04-psycopg.html
-│   ├── ch05-auth.html
-│   ├── ch06-gacha-algorithm.html
-│   ├── ch07-box-and-join.html
-│   ├── ch08-session.html
-│   ├── ch09-extending.html
+│   ├── ch04-postgres-docker.html
+│   ├── ch05-psycopg.html
+│   ├── ch06-auth.html
+│   ├── ch07-gacha-algorithm.html
+│   ├── ch08-box-and-join.html
+│   ├── ch09-session.html
+│   ├── ch10-extending.html
 │   └── assets/
 │       ├── style.css
 │       └── prism.css        ← コードハイライト
@@ -174,18 +174,19 @@ python -m http.server 5501 --directory docs
 教材は `docs/` の中にあります。
 順番に読んで、対応するコード (`server/`, `db/`, `scripts/`) を実際に書き換えながら進めてください。
 
-| 章   | テーマ                                          | ステータス  |
-| ---- | ----------------------------------------------- | ----------- |
-| Ch.0 | 全体像 + Colab セットアップ                      | ✅ 本文あり |
-| Ch.1 | HTTP サーバーを育てる (Colab、6 ステップ)        | ✅ 本文あり |
-| Ch.2 | データベース基礎 (Colab、6 ステップ)             | ✅ 本文あり |
-| Ch.3 | ローカル移行 + フロント起動 + echo スパイラル    | ✅ 本文あり |
-| Ch.4 | psycopg で register/login/list を実 DB に        | ✅ 本文あり |
-| Ch.5 | パスワードハッシュ + Cookie + sessions テーブル | ✅ 本文あり |
-| Ch.6 | ガチャ抽選 (重み付き乱択 + トランザクション)     | ✅ 本文あり |
-| Ch.7 | Box と JOIN・集計                                | ✅ 本文あり |
-| Ch.8 | 仕上げ: ファイル分割 + smoke テスト              | ✅ 本文あり |
-| Ch.9 | 拡張アイディア集                                 | ✅ 本文あり |
+| 章    | テーマ                                          | ステータス  |
+| ----- | ----------------------------------------------- | ----------- |
+| Ch.0  | 全体像 + Colab セットアップ                      | ✅ 本文あり |
+| Ch.1  | HTTP サーバーを育てる (Colab、6 ステップ)        | ✅ 本文あり |
+| Ch.2  | データベース基礎 (1 テーブルから)                | ✅ 本文あり |
+| Ch.3  | サーバ × DB MVP — 最初の成功体験                | ✅ 本文あり |
+| Ch.4  | ローカル移行 + フロント起動                      | ✅ 本文あり |
+| Ch.5  | psycopg で register/login/list を実 DB に        | ✅ 本文あり |
+| Ch.6  | パスワードハッシュ + Cookie + sessions テーブル | ✅ 本文あり |
+| Ch.7  | ガチャ抽選 (重み付き乱択 + トランザクション)     | ✅ 本文あり |
+| Ch.8  | Box と JOIN・集計                                | ✅ 本文あり |
+| Ch.9  | 仕上げ: ファイル分割 + smoke テスト              | ✅ 本文あり |
+| Ch.10 | 拡張アイディア集                                 | ✅ 本文あり |
 
 「骨子」はゴールと参照コードだけ書いてあります。あとから自分で本文を書き足していくのが
 理想的な学習の続き方です。

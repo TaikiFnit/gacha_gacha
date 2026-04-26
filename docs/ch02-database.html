@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>第2章 データベース基礎をColabで設計する — gacha_gacha</title>
+<title>第2章 データベースの基礎 — gacha_gacha</title>
 <link rel="stylesheet" href="./assets/style.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
 </head>
@@ -13,592 +13,356 @@
   <main>
     <div class="meta-bar">
       <span class="badge">Chapter 2</span>
-      <span>所要時間: 90〜120 分</span>
-      <span>形式: Colab セルで sqlite3 を直接動かす</span>
+      <span>所要時間: 60〜90 分</span>
+      <span>形式: %%sql セルで 1 文ずつ実行</span>
     </div>
-    <h1>第 2 章 — データベース基礎をColabで設計する</h1>
+    <h1>第 2 章 — データベースの基礎</h1>
 
     <p>
-      第1章で君の HTTP サーバができた。今度は中身を入れる箱、データベースを
-      <strong>Colab セルで 1 テーブルずつ建てて</strong>いきます。
-      この章を抜けると、ガチャシステムのデータ層 (5 テーブル) が君の手元に揃います。
-      第3章以降では、この DB に対して第1章のサーバから SQL を投げる形に進化させていきます。
+      Ch.1 で HTTP サーバが動くようになったので、 次は<strong>データを置く場所</strong>を作ります。
+      この章では <em>users テーブル 1 つだけ</em> をサクッと立てて、
+      <strong>テーブル設計の基本</strong> と <strong>SQL の最小語彙</strong> を身につけるのがゴール。
+      ガチャ用の他のテーブル (キャラ、 ガチャ筐体など) は、 必要になった章でその場で増やしていきます。
     </p>
 
     <div class="callout tip">
       <span class="label">📐 進め方</span>
-      <p>本章は <strong>Python の <code>sqlite3</code> モジュール</strong> を使います。
-        SQLite は Python に最初から入っており、Colab でも追加インストール無しで動きます。</p>
-      <p>本番想定の PostgreSQL と SQLite では一部記法が違いますが、本章で扱う範囲は
-        <strong>ほぼ同じ</strong>です。違いが出る所は都度補足します。</p>
+      <p>本章は <strong>%%sql セルマジック</strong>を使います。 1 セルに 1 つの SQL 文だけ書く形。
+        SQL のシンタックスハイライトが効き、 エラーも分かりやすくなります。</p>
+      <p>裏で動かすのは <strong>SQLite</strong> (ファイル <code>gacha.db</code>)。
+        Python 標準ライブラリだけで動き、 ファイルベースなのでセル間でデータが残ります。
+        本番想定の PostgreSQL とは <em>方言の差</em> がいくつかありますが、 本章で扱う範囲はほぼ共通です。</p>
     </div>
 
-    <div class="callout note">
-      <span class="label">📝 用語の地図 (30 秒)</span>
-      <table>
-        <thead><tr><th>用語</th><th>意味</th><th>Excel で言うと</th></tr></thead>
-        <tbody>
-          <tr><td>テーブル</td><td>1 種類のデータ</td><td>1 シート</td></tr>
-          <tr><td>カラム</td><td>列。1 種類の属性</td><td>列</td></tr>
-          <tr><td>レコード</td><td>1 件のデータ</td><td>行</td></tr>
-          <tr><td>主キー (PK)</td><td>その行を一意に特定する列</td><td>「No.」列</td></tr>
-          <tr><td>外部キー (FK)</td><td>他のテーブルの主キーを指す列</td><td>VLOOKUP の参照</td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <!-- =============================================================== -->
-    <h2>準備 — DB 接続を 1 つ作って使い回す</h2>
+    <!-- ============================================================== -->
+    <h2>2.1 リレーション / テーブル — 厳密にいうと</h2>
     <p>
-      最初のセルでインメモリの SQLite に接続し、表示ヘルパ <code>run()</code> を定義します。
-      以降のセルではこの <code>conn</code> をそのまま使い続けるので、ノートブックを再起動したら
-      上から実行し直してください。
+      よく「テーブルは 2 次元の表」 と教わりますが、 リレーショナルモデルの定義は少し違います。
     </p>
 
+    <figure>
+      <img src="./assets/figs/relation-structure.svg" alt="リレーション・タプル・アトリビュートの対応図"
+           style="max-width: 100%; height: auto;">
+      <figcaption>リレーショナルモデルでは、 表全体を <em>リレーション</em>、 行を <em>タプル</em>、 列を <em>アトリビュート</em> と呼ぶ</figcaption>
+    </figure>
+
+    <figure>
+      <img src="./assets/figs/relation-set.svg" alt="テーブルが集合として表現される様子"
+           style="max-width: 100%; height: auto;">
+      <figcaption>リレーション = タプルの<strong>集合</strong>。 重複なし・順序なしが本質</figcaption>
+    </figure>
+
+    <div class="callout note">
+      <span class="label">📚 ちゃんとした定義</span>
+      <p>
+        <strong>リレーション (relation)</strong> は、 ある<strong>属性の集合</strong>に対する
+        <strong>タプルの集合 (set)</strong>です。 集合なので:
+      </p>
+      <ul>
+        <li><strong>行に重複は無い</strong> (同じタプルは 1 個まで)</li>
+        <li><strong>行に順序は無い</strong> (上から読んでも下から読んでも意味は同じ)</li>
+        <li><strong>列にも順序は無い</strong> (列名でアクセスする)</li>
+      </ul>
+      <p>
+        SQL の世界の <strong>テーブル (table)</strong> はこのリレーションを実装した「近い親戚」 で、 厳密には少し違います:
+      </p>
+      <ul>
+        <li>主キーが無いと<strong>行の重複が起き得る</strong> (例: <code>SELECT 'x' UNION ALL SELECT 'x'</code>)</li>
+        <li>列に物理的な並び順がある (が、 アプリ側で頼ってはいけない)</li>
+      </ul>
+      <p>
+        本教材では「テーブル = リレーションの実用形」 として扱います。
+        <em>実装上は 2 次元の表として描けるが、 概念は集合</em>と覚えておけば十分です。
+      </p>
+    </div>
+
+    <p>
+      この章でこれから作る <code>users</code> テーブルは、 中身の概念図で言うとこういうものです:
+    </p>
+    <table>
+      <thead><tr><th>id</th><th>name</th><th>display_name</th><th>created_at</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>alice</td><td>アリス</td><td>2026-04-27 ...</td></tr>
+        <tr><td>2</td><td>bob</td><td>ボブ</td><td>2026-04-27 ...</td></tr>
+      </tbody>
+    </table>
+    <p>
+      4 つの<strong>属性</strong> (id, name, display_name, created_at) と、
+      <strong>ユーザー全員ぶんのタプル (= 行)</strong>。 ガチャシステムの全データは、
+      最終的にこういうリレーションが 5〜6 個集まったものになります。
+    </p>
+
+    <!-- ============================================================== -->
+    <h2>2.2 主キー (Primary Key, PK) を腹に落とす</h2>
+    <p>
+      リレーションの中で<strong>「その行を世界で 1 つだけ特定する列 (もしくは列の組み合わせ)」</strong>
+      を主キーと呼びます。 ユーザーで言えば「id = 1 ならアリス、 id = 2 ならボブ、 同じ id を持つ別人はいない」 のような。
+    </p>
+
+    <h3>主キーの 3 つの不変条件</h3>
+    <ol>
+      <li><strong>一意性</strong>: 同じ値の行が 2 つあってはならない</li>
+      <li><strong>非 NULL</strong>: 「未定」 を許さない (= 値がなければそもそも識別できない)</li>
+      <li><strong>不変性 (運用上)</strong>: 一度決めた値は変えない (他のテーブルから参照されているため)</li>
+    </ol>
+
+    <h3>自然キー vs 代替キー</h3>
+    <p>
+      <strong>自然キー</strong> = 業務上の意味を持つキー (例: マイナンバー、 メールアドレス)。
+      <strong>代替キー (surrogate key)</strong> = システムが採番した意味を持たない番号 (例: <code>id</code>)。
+    </p>
+    <p>
+      実務では <em>代替キー (id)</em> を主キーにして、 自然キーは <code>UNIQUE</code> 制約で別途守るのが定番。
+      理由: 自然キーは業務都合で変わったり、 NULL になったり、 形式が変わったりするから。
+      この教材も全テーブルで <code>id</code> を主キーにします。
+    </p>
+
+    <h3>複合キー</h3>
+    <p>
+      2 列以上を組み合わせて主キーにすることもできます。 例: 「あるユーザーがあるキャラを持っているか」
+      の中間テーブルでは <code>(user_id, character_id)</code> の組で主キーにできる。
+      第 8 章で出てきます。
+    </p>
+
+    <!-- ============================================================== -->
+    <h2>2.3 ipython-sql + SQLite を Colab に入れる</h2>
+
     <div class="colab-step">
-      <span class="step-tag">📒 セル G</span>
-<pre><code class="language-python">import sqlite3
-
-conn = sqlite3.connect(":memory:")
-conn.isolation_level = None  # 暗黙トランザクションを止め、BEGIN/COMMIT を自分で書く
-conn.execute("PRAGMA foreign_keys = ON")  # SQLite は既定OFF。FK を効かせる
-
-import unicodedata
-def _w(s):  # East-Asian-Wide 文字を 2、それ以外を 1 として表示幅を計算
-    return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in str(s))
-def _pad(s, n):
-    return str(s) + " " * max(0, n - _w(s))
-
-def run(sql, params=()):
-    """SQL 実行ヘルパ。SELECT なら結果を表で表示する。"""
-    cur = conn.execute(sql, params)
-    if cur.description:
-        cols = [d[0] for d in cur.description]
-        rows = cur.fetchall()
-        widths = [max(_w(cols[i]), *(_w(r[i]) for r in rows) if rows else (0,))
-                  for i in range(len(cols))]
-        print(" | ".join(_pad(c, widths[i]) for i, c in enumerate(cols)))
-        print("-+-".join("-" * w for w in widths))
-        for row in rows:
-            print(" | ".join(_pad(v, widths[i]) for i, v in enumerate(row)))
-        print(f"({len(rows)} rows)")
-    else:
-        print(f"OK ({cur.rowcount} rows affected)")
-
-print("DB connected.")</code></pre>
+      <span class="step-tag">📒 セル 2-A — ライブラリのロード</span>
+<pre><code class="language-python">!pip install ipython-sql --quiet
+%load_ext sql
+%sql sqlite:///gacha.db
+print("sqlite:///gacha.db に接続しました (ファイルが無ければ自動作成)")</code></pre>
     </div>
 
     <div class="expected-output">
       <span class="lbl">✅ 期待される出力</span>
-<pre><code>DB connected.</code></pre>
+<pre><code>sqlite:///gacha.db に接続しました (ファイルが無ければ自動作成)</code></pre>
     </div>
 
-    <!-- =============================================================== -->
-    <h2>Step 1 — `users` テーブルを作って遊ぶ</h2>
     <p>
-      <strong>主キー / UNIQUE / NOT NULL / DEFAULT / CHECK</strong> ─ 制約のオンパレード。
-      最初のテーブルで全部触っておきましょう。
+      <code>%load_ext sql</code> で SQL マジックを有効化、 <code>%sql sqlite:///gacha.db</code>
+      で SQLite のファイル <code>gacha.db</code> に接続。 これ以降のセル冒頭で <code>%%sql</code>
+      と書けば、 そのセルの中身が SQL として実行されます。 シンタックスハイライト付き。
+    </p>
+
+    <!-- ============================================================== -->
+    <h2>2.4 CREATE TABLE — users テーブルを作る</h2>
+
+    <div class="colab-step">
+      <span class="step-tag">📒 セル 2-B</span>
+<pre><code class="language-sql">%%sql
+DROP TABLE IF EXISTS users;
+CREATE TABLE users (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    name         TEXT    NOT NULL UNIQUE,
+    display_name TEXT    NOT NULL,
+    created_at   TEXT    NOT NULL DEFAULT (datetime('now'))
+);</code></pre>
+    </div>
+
+    <div class="expected-output">
+      <span class="lbl">✅ 期待される出力</span>
+<pre><code>* sqlite:///gacha.db
+Done.
+Done.</code></pre>
+    </div>
+
+    <h3>💡 解説</h3>
+    <ul>
+      <li><code>INTEGER PRIMARY KEY AUTOINCREMENT</code> = 自動採番の主キー。
+          INSERT で <code>id</code> を指定しなければ 1, 2, 3 ... と入っていく</li>
+      <li><code>NOT NULL</code> = この列に NULL を入れさせない</li>
+      <li><code>UNIQUE</code> = この列に同じ値を 2 行入れさせない (主キーじゃないけど一意にしたい列に使う)</li>
+      <li><code>DEFAULT (datetime('now'))</code> = 値を指定しなければ現在時刻 (UTC) を入れる</li>
+      <li><code>DROP TABLE IF EXISTS</code> = もう一度このセルを実行できるように、 既存のテーブルがあれば消す
+          (本番では絶対に使わないので注意)</li>
+    </ul>
+
+    <p>
+      PostgreSQL の場合は <code>INTEGER PRIMARY KEY AUTOINCREMENT</code> が <code>BIGSERIAL PRIMARY KEY</code>
+      になり、 <code>created_at</code> の型は <code>TIMESTAMPTZ</code> になりますが、 思想はまったく同じ。
+    </p>
+
+    <!-- ============================================================== -->
+    <h2>2.5 INSERT — 3 件のユーザーを追加</h2>
+
+    <div class="colab-step">
+      <span class="step-tag">📒 セル 2-C</span>
+<pre><code class="language-sql">%%sql
+INSERT INTO users (name, display_name) VALUES ('alice', 'アリス');
+INSERT INTO users (name, display_name) VALUES ('bob',   'ボブ');
+INSERT INTO users (name, display_name) VALUES ('carol', 'キャロル');</code></pre>
+    </div>
+
+    <div class="expected-output">
+      <span class="lbl">✅ 期待される出力</span>
+<pre><code>1 rows affected.
+1 rows affected.
+1 rows affected.</code></pre>
+    </div>
+
+    <p>
+      <code>id</code> と <code>created_at</code> は省略しています (前者は AUTOINCREMENT、 後者は DEFAULT)。
+      確認のため SELECT:
     </p>
 
     <div class="colab-step">
-      <span class="step-tag">📒 セル H</span>
-<pre><code class="language-python">run('''
-CREATE TABLE users (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    name        TEXT    NOT NULL UNIQUE,
-    pass_hash   TEXT    NOT NULL,
-    coins       INTEGER NOT NULL DEFAULT 1000 CHECK (coins >= 0),
-    created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
-)
-''')
-
-# 3 人 INSERT
-run("INSERT INTO users (name, pass_hash) VALUES ('alice', 'fakehash1')")
-run("INSERT INTO users (name, pass_hash) VALUES ('bob',   'fakehash2')")
-run("INSERT INTO users (name, pass_hash) VALUES ('carol', 'fakehash3')")
-
-# SELECT で確認
-run("SELECT id, name, coins, created_at FROM users ORDER BY id")</code></pre>
+      <span class="step-tag">📒 セル 2-D</span>
+<pre><code class="language-sql">%%sql
+SELECT * FROM users ORDER BY id;</code></pre>
     </div>
 
     <div class="expected-output">
       <span class="lbl">✅ 期待される出力 (created_at は実行時刻)</span>
-<pre><code>OK (-1 rows affected)
-OK (1 rows affected)
-OK (1 rows affected)
-OK (1 rows affected)
-id | name  | coins | created_at
----+-------+-------+--------------------
-1  | alice | 1000  | 2026-04-26 10:23:45
-2  | bob   | 1000  | 2026-04-26 10:23:45
-3  | carol | 1000  | 2026-04-26 10:23:45
-(3 rows)</code></pre>
+<pre><code>id  name   display_name  created_at
+--  -----  ------------  -------------------
+1   alice  アリス        2026-04-27 06:30:00
+2   bob    ボブ          2026-04-27 06:30:00
+3   carol  キャロル      2026-04-27 06:30:00</code></pre>
     </div>
 
-    <h3>💡 解説</h3>
-    <ul>
-      <li><code>INTEGER PRIMARY KEY AUTOINCREMENT</code> = SQLite の自動採番。
-          PostgreSQL だと <code>BIGSERIAL PRIMARY KEY</code> がほぼ同じ意味</li>
-      <li><code>NOT NULL</code> + <code>UNIQUE</code> + 主キー があれば、
-          そのテーブルから「同じ name の人が 2 人いる」ことは絶対に防げる</li>
-      <li><code>DEFAULT 1000</code> のおかげで <code>coins</code> を指定せず INSERT しても 1000 で入る</li>
-    </ul>
+    <!-- ============================================================== -->
+    <h2>2.6 UPDATE / DELETE</h2>
 
     <div class="colab-step">
-      <span class="step-tag">📒 セル I (制約に殴られる体験)</span>
-<pre><code class="language-python">try:
-    run("INSERT INTO users (name, pass_hash) VALUES ('alice', 'dup')")
-except Exception as e:
-    print("UNIQUE違反:", e)
-
-try:
-    run("UPDATE users SET coins = -1 WHERE name = 'alice'")
-except Exception as e:
-    print("CHECK 違反:", e)
-
-try:
-    run("INSERT INTO users (name) VALUES ('mallory')")  # pass_hash が NULL
-except Exception as e:
-    print("NOT NULL 違反:", e)</code></pre>
+      <span class="step-tag">📒 セル 2-E — UPDATE</span>
+<pre><code class="language-sql">%%sql
+UPDATE users SET display_name = 'アリス・スミス' WHERE name = 'alice';
+SELECT id, name, display_name FROM users WHERE name = 'alice';</code></pre>
     </div>
 
     <div class="expected-output">
       <span class="lbl">✅ 期待される出力</span>
-<pre><code>UNIQUE違反: UNIQUE constraint failed: users.name
-CHECK 違反: CHECK constraint failed: coins &gt;= 0
-NOT NULL 違反: NOT NULL constraint failed: users.pass_hash</code></pre>
+<pre><code>id  name   display_name
+--  -----  ----------------
+1   alice  アリス・スミス</code></pre>
     </div>
 
-    <p>
-      DB が「これはダメだよ」と<strong>自分から教えてくれる</strong>のがリレーショナルDBの強み。
-      アプリ側で同じバリデーションを書かなくて済みます。
-    </p>
-
-    <!-- =============================================================== -->
-    <h2>Step 2 — `characters` マスタを足す</h2>
-    <p>
-      ガチャから出るキャラクターのマスタテーブル。
-      <code>rarity</code> は 1〜5 の整数で、<code>CHECK</code> で範囲を縛ります。
-    </p>
-
     <div class="colab-step">
-      <span class="step-tag">📒 セル J</span>
-<pre><code class="language-python">run('''
-CREATE TABLE characters (
-    id      INTEGER PRIMARY KEY AUTOINCREMENT,
-    name    TEXT    NOT NULL UNIQUE,
-    rarity  INTEGER NOT NULL CHECK (rarity BETWEEN 1 AND 5),
-    emoji   TEXT    NOT NULL DEFAULT '❓'
-)
-''')
-
-chars = [
-    ('スライム', 1, '🟢'),
-    ('ウルフ',   2, '🐺'),
-    ('ナイト',   3, '🛡️'),
-    ('ペガサス', 4, '🦄'),
-    ('ドラゴン', 5, '🐉'),
-]
-conn.executemany("INSERT INTO characters (name, rarity, emoji) VALUES (?, ?, ?)", chars)
-
-run("SELECT id, name, rarity, emoji FROM characters ORDER BY rarity DESC")</code></pre>
+      <span class="step-tag">📒 セル 2-F — DELETE</span>
+<pre><code class="language-sql">%%sql
+DELETE FROM users WHERE name = 'carol';
+SELECT * FROM users ORDER BY id;</code></pre>
     </div>
 
     <div class="expected-output">
       <span class="lbl">✅ 期待される出力</span>
-<pre><code>id | name     | rarity | emoji
----+----------+--------+------
-5  | ドラゴン | 5      | 🐉
-4  | ペガサス | 4      | 🦄
-3  | ナイト   | 3      | 🛡️
-2  | ウルフ   | 2      | 🐺
-1  | スライム | 1      | 🟢
-(5 rows)</code></pre>
+<pre><code>id  name   display_name    created_at
+--  -----  --------------  -------------------
+1   alice  アリス・スミス  2026-04-27 06:30:00
+2   bob    ボブ            2026-04-27 06:30:00</code></pre>
     </div>
 
-    <h3>📝 自分でやってみる</h3>
-    <ul>
-      <li><code>INSERT INTO characters (name, rarity, emoji) VALUES ('boss', 9, '😈')</code> を実行 → CHECK 違反のメッセージを読む</li>
-      <li>レア度別の件数を出す: <code>run("SELECT rarity, COUNT(*) FROM characters GROUP BY rarity ORDER BY rarity")</code></li>
-    </ul>
+    <div class="callout warn">
+      <span class="label">⚠️ WHERE を忘れない</span>
+      <code>UPDATE users SET display_name = 'X'</code> のように <code>WHERE</code> を忘れると
+      <strong>全行</strong>が更新される。 <code>DELETE FROM users</code> も同様で全行消える。
+      本番で初心者がやらかす一番有名なバグ。
+    </div>
 
-    <!-- =============================================================== -->
-    <h2>Step 3 — ガチャ筐体 + 排出設定 (多対多 + 重み)</h2>
+    <!-- ============================================================== -->
+    <h2>2.7 制約に「わざと」 殴られる</h2>
     <p>
-      「ガチャ筐体」と「キャラ」は<strong>多対多</strong>の関係。
-      これを RDB で表現する常套手段が <strong>中間テーブル</strong>。
-      さらに今回はそこに <code>weight</code> (重み) も持たせます。
+      DB の良さは「不正なデータが入りそうになったら自分から教えてくれる」 こと。
+      わざと違反させて、 各制約のメッセージを目で見ておきます。
     </p>
 
     <div class="colab-step">
-      <span class="step-tag">📒 セル K</span>
-<pre><code class="language-python">run('''
-CREATE TABLE gachas (
-    id    INTEGER PRIMARY KEY AUTOINCREMENT,
-    name  TEXT    NOT NULL UNIQUE,
-    price INTEGER NOT NULL CHECK (price > 0)
-)
-''')
-
-run('''
-CREATE TABLE gacha_items (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    gacha_id     INTEGER NOT NULL REFERENCES gachas(id)     ON DELETE CASCADE,
-    character_id INTEGER NOT NULL REFERENCES characters(id) ON DELETE RESTRICT,
-    weight       INTEGER NOT NULL CHECK (weight > 0),
-    UNIQUE (gacha_id, character_id)
-)
-''')
-
-conn.executemany("INSERT INTO gachas (name, price) VALUES (?, ?)",
-                 [('通常ガチャ', 100), ('プレミアムガチャ', 300)])
-
-# 通常ガチャ: 全レア度をバランス良く配置
-conn.execute('''
-INSERT INTO gacha_items (gacha_id, character_id, weight)
-SELECT g.id, c.id,
-       CASE c.rarity WHEN 1 THEN 60 WHEN 2 THEN 30
-                     WHEN 3 THEN 20 WHEN 4 THEN 8  WHEN 5 THEN 2 END
-  FROM gachas g, characters c
- WHERE g.name = '通常ガチャ'
-''')
-
-# プレミアム: レア度3以上のみ、SSR 厚め
-conn.execute('''
-INSERT INTO gacha_items (gacha_id, character_id, weight)
-SELECT g.id, c.id,
-       CASE c.rarity WHEN 3 THEN 50 WHEN 4 THEN 20 WHEN 5 THEN 10 END
-  FROM gachas g, characters c
- WHERE g.name = 'プレミアムガチャ' AND c.rarity >= 3
-''')
-
-# 排出表 (確率付き)
-run('''
-SELECT g.name AS gacha, c.name AS chara, c.rarity, gi.weight,
-       round(gi.weight * 100.0 / sum(gi.weight) over (partition by g.id), 2) AS pct
-  FROM gacha_items gi
-  JOIN gachas g     ON g.id = gi.gacha_id
-  JOIN characters c ON c.id = gi.character_id
- ORDER BY g.id, gi.weight DESC
-''')</code></pre>
+      <span class="step-tag">📒 セル 2-G — UNIQUE 違反</span>
+<pre><code class="language-sql">%%sql
+INSERT INTO users (name, display_name) VALUES ('alice', '別人だよ');</code></pre>
     </div>
 
     <div class="expected-output">
-      <span class="lbl">✅ 期待される出力 (確率列がきれいに合計100)</span>
-<pre><code>gacha            | chara    | rarity | weight | pct
------------------+----------+--------+--------+------
-通常ガチャ       | スライム | 1      | 60     | 50.0
-通常ガチャ       | ウルフ   | 2      | 30     | 25.0
-通常ガチャ       | ナイト   | 3      | 20     | 16.67
-通常ガチャ       | ペガサス | 4      | 8      | 6.67
-通常ガチャ       | ドラゴン | 5      | 2      | 1.67
-プレミアムガチャ | ナイト   | 3      | 50     | 62.5
-プレミアムガチャ | ペガサス | 4      | 20     | 25.0
-プレミアムガチャ | ドラゴン | 5      | 10     | 12.5
-(8 rows)</code></pre>
+      <span class="lbl">✅ 期待される出力 (失敗するのが正解)</span>
+<pre><code>(sqlite3.IntegrityError) UNIQUE constraint failed: users.name
+[SQL: INSERT INTO users (name, display_name) VALUES ('alice', '別人だよ');]</code></pre>
     </div>
 
-    <h3>💡 解説</h3>
-    <ul>
-      <li><code>UNIQUE (gacha_id, character_id)</code> = 複合ユニーク制約。
-          「同じガチャに同じキャラが 2 行」 を DB レベルで禁止</li>
-      <li><code>ON DELETE CASCADE</code> = 親 (ガチャ) を消したら子 (排出設定) も連れて消える</li>
-      <li><code>ON DELETE RESTRICT</code> = 子 (排出に登場している) があるなら親 (キャラ) を消させない</li>
-      <li><code>SUM(weight) OVER (PARTITION BY g.id)</code> = ウィンドウ関数。
-          <strong>「集計しつつ、行は潰さない」</strong>のがミソ</li>
-    </ul>
-
-    <h3>📝 自分でやってみる</h3>
-    <ul>
-      <li>同じ <code>(gacha_id, character_id)</code> を二重に INSERT → UNIQUE 違反</li>
-      <li>存在しない <code>gacha_id</code> を INSERT → FK 違反</li>
-      <li><code>DELETE FROM characters WHERE id = 1</code> → ON DELETE RESTRICT で守られる</li>
-    </ul>
-
-    <!-- =============================================================== -->
-    <h2>Step 4 — `user_characters` + トランザクション</h2>
     <p>
-      ガチャを 1 回引く処理は「<strong>coins -100</strong>」と「<strong>履歴に 1 行 INSERT</strong>」
-      の 2 つの書き換え。 これを<strong>両方成功 or 両方失敗</strong>で束ねるのがトランザクションです。
+      この <code>UNIQUE constraint failed</code> こそが、 第 5 章で <code>POST /api/register</code>
+      の重複チェックを <em>アプリ側で書かなくていい理由</em> です (= DB が代わりに守ってくれる)。
     </p>
 
     <div class="colab-step">
-      <span class="step-tag">📒 セル L</span>
-<pre><code class="language-python">run('''
-CREATE TABLE user_characters (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id      INTEGER NOT NULL REFERENCES users(id)      ON DELETE CASCADE,
-    character_id INTEGER NOT NULL REFERENCES characters(id) ON DELETE RESTRICT,
-    obtained_at  TEXT    NOT NULL DEFAULT (datetime('now'))
-)
-''')
-run("CREATE INDEX idx_user_characters_user ON user_characters(user_id)")
-
-# alice が通常ガチャを 1 回引いてスライムが当たった、を SQL で再現
-conn.execute("BEGIN")
-conn.execute("UPDATE users SET coins = coins - 100 WHERE name = 'alice'")
-conn.execute('''
-INSERT INTO user_characters (user_id, character_id)
-SELECT u.id, c.id FROM users u, characters c
- WHERE u.name = 'alice' AND c.name = 'スライム'
-''')
-conn.execute("COMMIT")
-
-run("SELECT name, coins FROM users WHERE name = 'alice'")
-run('''
-SELECT u.name AS user, c.name AS chara, uc.obtained_at
-  FROM user_characters uc
-  JOIN users      u ON u.id = uc.user_id
-  JOIN characters c ON c.id = uc.character_id
-''')</code></pre>
+      <span class="step-tag">📒 セル 2-H — NOT NULL 違反</span>
+<pre><code class="language-sql">%%sql
+INSERT INTO users (name) VALUES ('mallory');   -- display_name を欠落させる</code></pre>
     </div>
 
     <div class="expected-output">
       <span class="lbl">✅ 期待される出力</span>
-<pre><code>name  | coins
-------+------
-alice | 900
-(1 rows)
-user  | chara    | obtained_at
-------+----------+--------------------
-alice | スライム | 2026-04-26 10:24:01
-(1 rows)</code></pre>
+<pre><code>(sqlite3.IntegrityError) NOT NULL constraint failed: users.display_name</code></pre>
     </div>
 
-    <h3>💡 解説</h3>
-    <ul>
-      <li><code>BEGIN ... COMMIT</code> で 2 つの書き換えを 1 セットにまとめた</li>
-      <li>もし <code>UPDATE</code> 後の <code>INSERT</code> が失敗したら、<code>conn.execute("ROLLBACK")</code>
-          で <strong>UPDATE もろとも巻き戻せる</strong> (= 「コインだけ減ってキャラが配られない」事故を防ぐ)</li>
-      <li>本物の <code>server/app.py</code> では、Python 側の <code>with get_conn() as conn:</code>
-          がブロック終了時に自動で COMMIT、例外なら ROLLBACK してくれる</li>
-    </ul>
-
-    <!-- =============================================================== -->
-    <h2>Step 5 — JOIN + GROUP BY + ウィンドウ関数で Box を出す</h2>
-    <p>
-      所持品 (Box) を SQL 1 本で組み立てます。 alice にもう少し引かせてからやってみましょう。
-    </p>
-
     <div class="colab-step">
-      <span class="step-tag">📒 セル M</span>
-<pre><code class="language-python"># まずは alice にあと何回か引かせる (コイン無制限化してテスト)
-draws = ['スライム', 'ウルフ', 'スライム', 'ナイト',
-         'ウルフ', 'ペガサス', 'スライム', 'ナイト']
-for chara in draws:
-    conn.execute('''
-        INSERT INTO user_characters (user_id, character_id)
-        SELECT u.id, c.id FROM users u, characters c
-         WHERE u.name = 'alice' AND c.name = ?
-    ''', (chara,))
-conn.commit()
-
-print("== alice の Box (所持キャラ + 個数) ==")
-run('''
-SELECT c.name, c.rarity, c.emoji, COUNT(*) AS count
-  FROM user_characters uc
-  JOIN characters c ON c.id = uc.character_id
-  JOIN users      u ON u.id = uc.user_id
- WHERE u.name = 'alice'
- GROUP BY c.id
- ORDER BY c.rarity DESC, c.id
-''')
-
-print("\n== 全キャラ × alice の所持数 (LEFT JOIN: 未所持も並べる) ==")
-run('''
-SELECT c.name, c.rarity, COUNT(uc.id) AS owned
-  FROM characters c
-  LEFT JOIN user_characters uc
-         ON uc.character_id = c.id
-        AND uc.user_id = (SELECT id FROM users WHERE name='alice')
- GROUP BY c.id
- ORDER BY c.rarity DESC, c.id
-''')</code></pre>
+      <span class="step-tag">📒 セル 2-I — 主キーを上書きしようとする</span>
+<pre><code class="language-sql">%%sql
+INSERT INTO users (id, name, display_name) VALUES (1, 'mallory', 'マロリー');</code></pre>
     </div>
 
     <div class="expected-output">
       <span class="lbl">✅ 期待される出力</span>
-<pre><code>== alice の Box (所持キャラ + 個数) ==
-name     | rarity | emoji | count
----------+--------+-------+------
-ペガサス | 4      | 🦄    | 1
-ナイト   | 3      | 🛡️    | 2
-ウルフ   | 2      | 🐺    | 2
-スライム | 1      | 🟢    | 4
-(4 rows)
-
-== 全キャラ × alice の所持数 (LEFT JOIN: 未所持も並べる) ==
-name     | rarity | owned
----------+--------+------
-ドラゴン | 5      | 0
-ペガサス | 4      | 1
-ナイト   | 3      | 2
-ウルフ   | 2      | 2
-スライム | 1      | 4
-(5 rows)</code></pre>
+<pre><code>(sqlite3.IntegrityError) UNIQUE constraint failed: users.id</code></pre>
     </div>
 
-    <h3>💡 解説</h3>
-    <ul>
-      <li><code>JOIN</code> = テーブル同士を「キーで繋いで横に並べる」操作</li>
-      <li><code>GROUP BY c.id</code> + <code>COUNT(*)</code> = 同じキャラごとに行をまとめて個数を数える</li>
-      <li><code>LEFT JOIN</code> = 左 (characters) は必ず残す。マッチしない右 (uc) は NULL</li>
-      <li><code>COUNT(uc.id)</code> は <strong>NULL を数えない</strong>ので、未所持キャラの owned が 0 になる
-          (これが <code>COUNT(*)</code> だと 1 になって嘘になる、よくある罠)</li>
-    </ul>
-
-    <h3>📝 自分でやってみる</h3>
-    <ul>
-      <li>「未所持の SSR (rarity=5) のみ」 を返すクエリを書いてみる</li>
-      <li>レア度別のコンプ率 (<code>所持種類数 / 全キャラ数 × 100</code>) を出す</li>
-    </ul>
-
-    <!-- =============================================================== -->
-    <h2>Step 6 — わざと制約に殴られる演習</h2>
     <p>
-      最後に、これまで作った制約を <strong>わざと違反させて</strong>
-      DB が何を守ってくれているのか身体で覚えます。
+      主キーは <code>UNIQUE + NOT NULL</code> の合わせ技 (内部的に UNIQUE 制約として実装される)。
+      手で <code>id</code> を指定しても、 既に存在する値なら弾かれる。
     </p>
 
-    <div class="colab-step">
-      <span class="step-tag">📒 セル N</span>
-<pre><code class="language-python">def try_sql(label, sql):
-    try:
-        conn.execute(sql)
-        conn.commit()
-        print(f"  {label}: ★成功してしまった (制約が抜けてる)")
-    except Exception as e:
-        print(f"  {label}: {type(e).__name__}: {e}")
-
-print("== それぞれエラーメッセージを読み取る ==")
-try_sql("name 重複",        "INSERT INTO users (name, pass_hash) VALUES ('alice', 'h')")
-try_sql("rarity=9",         "INSERT INTO characters (name, rarity, emoji) VALUES ('boss', 9, '😈')")
-try_sql("weight=0",         "INSERT INTO gacha_items (gacha_id, character_id, weight) VALUES (1, 1, 0)")
-try_sql("FK 違反",          "INSERT INTO gacha_items (gacha_id, character_id, weight) VALUES (9999, 1, 1)")
-try_sql("ON DELETE RESTRICT","DELETE FROM characters WHERE id = 1")  # 所持されている
-
-# トランザクションの ROLLBACK
-print("\n== ROLLBACK の体験 ==")
-conn.execute("BEGIN")
-conn.execute("INSERT INTO users (name, pass_hash) VALUES ('eve', 'h')")
-print("  eve を 1 回入れた → ", conn.execute("SELECT COUNT(*) FROM users WHERE name='eve'").fetchone())
-conn.execute("ROLLBACK")
-print("  ROLLBACK 後      → ", conn.execute("SELECT COUNT(*) FROM users WHERE name='eve'").fetchone(),
-      "(入っていない)")</code></pre>
-    </div>
-
-    <div class="expected-output">
-      <span class="lbl">✅ 期待される出力</span>
-<pre><code>== それぞれエラーメッセージを読み取る ==
-  name 重複: IntegrityError: UNIQUE constraint failed: users.name
-  rarity=9: IntegrityError: CHECK constraint failed: rarity BETWEEN 1 AND 5
-  weight=0: IntegrityError: CHECK constraint failed: weight &gt; 0
-  FK 違反: IntegrityError: FOREIGN KEY constraint failed
-  ON DELETE RESTRICT: IntegrityError: FOREIGN KEY constraint failed
-
-== ROLLBACK の体験 ==
-  eve を 1 回入れた →  (1,)
-  ROLLBACK 後      →  (0,) (入っていない)</code></pre>
-    </div>
-
-    <h3>💡 解説</h3>
+    <h3>📝 自分でちょっと試す</h3>
     <ul>
-      <li>制約違反は<strong>例外</strong>として返ってくる。 アプリは <code>try/except</code>
-          で受けて、ユーザーには分かりやすいエラーに変えて返す</li>
-      <li>本物の <code>POST /api/register</code> でも、name 重複は最終的にこの <code>UNIQUE constraint failed</code>
-          を 400 + 「その name は既に使われています」 に変換しているだけ</li>
-      <li>ROLLBACK は「直前の BEGIN 以降全部巻き戻る」 = ガチャ処理の安全網</li>
+      <li>セル 2-G を 2 度実行 → 何が違う?</li>
+      <li><code>UPDATE users SET name = 'bob' WHERE name = 'alice'</code> → どうなる? なぜ?</li>
+      <li><code>DELETE FROM users</code> (WHERE 無し) → 何が消える? その後 INSERT すると id はどこから始まる?</li>
     </ul>
 
-    <!-- =============================================================== -->
-    <h2>仕上げ — 育てた DB を持ち帰る</h2>
+    <!-- ============================================================== -->
+    <h2>2.8 仕上げ — Ch.3 への橋渡し</h2>
     <p>
-      ここまでで作った 5 テーブル (users / characters / gachas / gacha_items / user_characters)
-      は、第3章以降でガチャ API が使う土台そのものです。
-      <strong>消えないように DDL を 1 つの SQL ファイルに書き出して</strong> 保存しておきましょう。
+      これで <code>gacha.db</code> ファイルに <code>users</code> テーブルができました。
+      ファイルベースなので、 Colab のランタイムを切らなければ次のセル・次の章でも同じテーブルが見えます。
     </p>
 
-    <div class="colab-step">
-      <span class="step-tag">📒 セル O — schema.sql / seed.sql に書き出す</span>
-<pre><code class="language-python">import os, pathlib
-
-# 第0章で作ったROOTディレクトリ配下に書き出す
-db_dir = pathlib.Path(os.environ.get("HOME", ".")) / "gacha_gacha" / "db" \
-         if pathlib.Path("/content").exists() == False else pathlib.Path("/content/gacha_gacha/db")
-# (セル1で os.chdir(ROOT) しているので相対パスでもOK)
-db_dir = pathlib.Path("db"); db_dir.mkdir(exist_ok=True)
-
-# DDL (テーブル定義) を sqlite_master から取り出す
-ddl_lines = []
-for row in conn.execute("""
-    SELECT sql FROM sqlite_master
-     WHERE type IN ('table', 'index') AND sql IS NOT NULL
-     ORDER BY type DESC, name
-"""):
-    ddl_lines.append(row[0] + ";\n")
-schema_sql = "-- 第2章で君が育てた DDL\n\n" + "\n".join(ddl_lines)
-
-# データ (キャラ、ガチャ、排出設定) を INSERT 文として書き出す
-seed_lines = ["-- 第2章で投入したマスタデータ\n"]
-for table in ["characters", "gachas", "gacha_items"]:
-    cols = [d[0] for d in conn.execute(f"SELECT * FROM {table} LIMIT 0").description]
-    for row in conn.execute(f"SELECT * FROM {table} ORDER BY id"):
-        vals = ", ".join("NULL" if v is None
-                         else f"'{str(v).replace(chr(39), chr(39)*2)}'" if isinstance(v, str)
-                         else str(v) for v in row)
-        seed_lines.append(f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({vals});\n")
-seed_sql = "".join(seed_lines)
-
-(db_dir / "schema.sql").write_text(schema_sql, encoding="utf-8")
-(db_dir / "seed.sql").write_text(seed_sql, encoding="utf-8")
-print("書き出した:")
-print(" ", (db_dir / "schema.sql").resolve())
-print(" ", (db_dir / "seed.sql").resolve())
-print()
-print("=== schema.sql 先頭 200 文字 ===")
-print((db_dir / "schema.sql").read_text()[:200])</code></pre>
-    </div>
-
-    <div class="expected-output">
-      <span class="lbl">✅ 期待される出力 (パスは環境次第)</span>
-<pre><code>書き出した:
-  /content/gacha_gacha/db/schema.sql
-  /content/gacha_gacha/db/seed.sql
-
-=== schema.sql 先頭 200 文字 ===
--- 第2章で君が育てた DDL
-
-CREATE TABLE users (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    name        TEXT    NOT NULL UNIQUE,
-    pass_hash   TEXT    NOT NULL,
-    coins       INTEGER NOT NULL ...</code></pre>
-    </div>
+    <p>
+      第 3 章では、 Ch.1 で建てた HTTP サーバから <strong>このテーブルに INSERT / SELECT する</strong>
+      コードを書きます。 そこで初めて<strong>「サーバ + DB」</strong> が 1 つの動くシステムになります。
+    </p>
 
     <div class="callout note">
-      <span class="label">💾 ノートブックも保存</span>
-      <p>Colab メニュー <strong>「ファイル」→「ダウンロード」→「.ipynb をダウンロード」</strong> で
-        ここまでの全セルが手元に保存できます。次章以降の作業で必要になったらここから再開できます。</p>
-      <p>サイドメニューのフォルダアイコン (📁) を開けば <code>db/schema.sql</code>
-        と <code>db/seed.sql</code> がダウンロード可能な形で見えます。</p>
-    </div>
-
-    <div class="callout tip">
-      <span class="label">🪞 答え合わせ用の参照</span>
-      <p>リポジトリには <code>db/schema.sql</code> という「ガチャ用に必要な全テーブルを書ききった版」があります。
-        そこには君がまだ書いていない <code>sessions</code> テーブル (第8章で扱う) や、
-        本番想定の PostgreSQL 用の細かい記法 (<code>BIGSERIAL</code> / <code>TIMESTAMPTZ</code> など) も入っています。</p>
-      <p>でも 5 テーブルの本体は、君が育てたものとイコールです。
-        差分は意味的にほぼゼロで、PostgreSQL ↔ SQLite の表記差・拡張機能の有無だけです。</p>
+      <span class="label">📝 もっと深く知りたい人へ</span>
+      <p>
+        本教材ではリレーショナルモデルの「<strong>原理原則</strong>」 に立ち入りすぎないよう、
+        必要最小限を扱っています。 SQL は構文を覚えるものではなく <em>集合操作の言語</em>として
+        体系的に理解したい人は、 以下が定番です:
+      </p>
+      <ul>
+        <li><strong>C.J. Date『データベース実践講義 — エンジニアのためのリレーショナル理論』</strong>
+            (オライリー) — リレーショナルモデルの理論をエンジニア向けに丁寧に解説</li>
+        <li>増永良文『リレーショナルデータベース入門』 — 国内の定番教科書</li>
+        <li>正規化 / 関数従属性 / 第 3 正規形などの設計論はこのレベルで扱われます</li>
+      </ul>
+      <p>
+        図は私の知り合いが書いた研修資料 (新卒向け SQL/データエンジニアリング、 BigQuery 文脈) からの
+        借用です。 集合論的な語彙でリレーショナルモデルを掘り下げたい人にはちょうど良いはず。
+      </p>
+      <p>
+        本教材では <strong>JOIN / GROUP BY / ウィンドウ関数 / トランザクション</strong> は、
+        必要になる第 7 / 8 章でその場で扱います。
+        <em>「先取り学習」 にはせず、 必要が見えたときに最大の効率で吸収する</em>方針です。
+      </p>
     </div>
 
     <h2>本章のまとめ</h2>
     <ul>
-      <li>テーブルは「同じ事実を 1 箇所だけに」分けて持つ (= 正規化)</li>
-      <li>多対多は中間テーブルで表現。重みや状態を中間に持てるのが強み</li>
-      <li><code>NOT NULL / UNIQUE / CHECK / FK</code> はアプリコードの代わりに DB が守ってくれる</li>
-      <li>複数行の更新が一塊なら必ずトランザクション (<code>BEGIN..COMMIT</code>)</li>
-      <li>JOIN / GROUP BY / ウィンドウ関数まで使えると、ビジネスロジックの大半は SQL で書ける</li>
+      <li>リレーションは集合、 テーブルはその実用形。 「同じ事実を 1 箇所だけに」</li>
+      <li>主キーは「行を世界で一意に特定」 する列。 自動採番 (id) を使うのが定番</li>
+      <li><code>NOT NULL / UNIQUE</code> 等の制約は DB が自動で守ってくれる
+          (= アプリで書く必要が無い)</li>
+      <li>SQL は <code>CREATE / INSERT / SELECT / UPDATE / DELETE</code> で大半が書ける。
+          残り (JOIN、 GROUP BY、 トランザクション) は必要なときに学ぶ</li>
     </ul>
 
     <div class="pager">
@@ -606,9 +370,9 @@ CREATE TABLE users (
         <span class="lbl">前へ</span>
         <span class="ttl">← 第 1 章 HTTPサーバー</span>
       </a>
-      <a class="next" href="./ch03-postgres-docker.html">
+      <a class="next" href="./ch03-mvp.html">
         <span class="lbl">次へ</span>
-        <span class="ttl">第 3 章 Postgres を Docker で →</span>
+        <span class="ttl">第 3 章 サーバと DB を繋ぐ MVP →</span>
       </a>
     </div>
   </main>

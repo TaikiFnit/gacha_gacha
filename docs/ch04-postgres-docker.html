@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第4章 フロントを足してガチャ画面を呼ぶ — gacha_gacha</title>
+<link rel="stylesheet" href="./assets/style.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar"></aside>
+  <main>
+    <div class="meta-bar">
+      <span class="badge">Chapter 4</span>
+      <span>所要時間: 60〜90 分</span>
+      <span>形式: ローカルにフロントを保存 + Colab サーバへ繋ぐ</span>
+    </div>
+    <h1>第 4 章 — フロントを足して、 ガチャ画面を呼ぶ</h1>
+
+    <p>
+      Ch.3 で REST クライアント (Hoppscotch など) から Colab サーバを叩けました。
+      でもこれは「開発者が手で API を叩いている」 状態で、 まだ<strong>ゲーム画面ではない</strong>。
+      この章で<strong>本物のフロント (ガチャ画面)</strong> を君のブラウザで開いて、
+      Colab サーバと繋ぎます。
+    </p>
+
+    <div class="callout tip">
+      <span class="label">📐 進め方</span>
+      <ul>
+        <li>フロント (HTML/CSS/JS) は<strong>既製品</strong>を渡します。 自分で書く必要なし</li>
+        <li>君の手元の PC にダウンロードして、 <strong>index.html をダブルクリック</strong>するだけで動く</li>
+        <li>サーバは Ch.3 のまま Colab で起動。 Colab 公開 URL をフロントの設定欄に入れる</li>
+        <li>「ブラウザに表示されるゲーム画面 ⇄ Colab 上の Python サーバ ⇄ SQLite」 が一気通貫で動く</li>
+      </ul>
+    </div>
+
+    <h2>4.1 そもそもフロントとは</h2>
+    <p>
+      Ch.0 でちらっと触れましたが、 改めて。 <strong>フロントエンド</strong> = ユーザーが直接触る画面のこと。
+      Web の場合は次の 3 種類のファイルでできています:
+    </p>
+    <ul>
+      <li><code>.html</code> = ページの<strong>骨組み</strong> (見出し / フォーム / ボタン 等)</li>
+      <li><code>.css</code> = <strong>見た目</strong> (色 / 余白 / レイアウト)</li>
+      <li><code>.js</code> = <strong>動き</strong> (ボタンを押したら何をするか、 サーバへ通信、 など)</li>
+    </ul>
+    <p>
+      ブラウザに <code>.html</code> を開かせると、 ブラウザが中身を読んで <code>.css</code> と <code>.js</code> も
+      自動的に取りに行って画面が組み上がります。 君が今読んでいるこの教材ページもまさにそれ。
+    </p>
+
+    <h2>4.2 配布フロントを 3 ファイル取得する</h2>
+    <p>
+      本リポジトリの <code>web/</code> フォルダに、 ガチャ画面の HTML / CSS / JS が一式置いてあります。
+      <strong>下記の 3 ファイル</strong>をダウンロードして、 君の PC の好きなフォルダ (例:
+      <code>~/Downloads/gacha_web/</code>) にまとめて保存してください。
+    </p>
+    <ul>
+      <li><a href="https://raw.githubusercontent.com/taikifnit/gacha_gacha/master/web/index.html" target="_blank"><code>web/index.html</code></a></li>
+      <li><a href="https://raw.githubusercontent.com/taikifnit/gacha_gacha/master/web/app.js" target="_blank"><code>web/app.js</code></a></li>
+      <li><a href="https://raw.githubusercontent.com/taikifnit/gacha_gacha/master/web/style.css" target="_blank"><code>web/style.css</code></a></li>
+    </ul>
+
+    <div class="callout note">
+      <span class="label">📝 ダウンロードのコツ</span>
+      <p>
+        上のリンクは raw ファイルへ直リンクしているので、 ブラウザで開いた状態で
+        <strong>右クリック → 「名前を付けてリンク先を保存」</strong> で OK。
+        3 ファイルとも<strong>同じフォルダ</strong>に入れること (HTML から相対パスで CSS/JS を読むため)。
+      </p>
+      <p>
+        まだリポジトリを公開していない人は、 リポジトリをクローンしてから
+        <code>web/</code> フォルダの中身を任意の場所にコピーしてください。
+      </p>
+    </div>
+
+    <h2>4.3 index.html をダブルクリックで開く</h2>
+    <p>
+      保存した <code>index.html</code> をファイルマネージャでダブルクリック → ブラウザが起動して
+      ガチャ画面が出ます。 アドレスバーは <code>file:///Users/.../gacha_web/index.html</code>
+      のような形になります (= 「ローカルファイルをそのまま見ている」 状態)。
+    </p>
+
+    <details>
+      <summary>📚 コラム: <code>file://</code> って何?</summary>
+      <p>
+        URL のスキーム (Ch.1 の URL 構造コラム参照) には <code>http</code>/<code>https</code> 以外に
+        <code>file</code> というものがあって、 <strong>ネットワーク越しではなく自分のディスクから直接ファイルを読む</strong>
+        という意味です。 ローカルで HTML を試すときの一番手軽な方法。
+      </p>
+      <p>
+        本格運用では <code>file://</code> は使わず、 必ず Web サーバ経由で <code>http://</code> で配信しますが、
+        今はまだ「フロントを動かしたい」 だけなのでこれで十分。
+      </p>
+    </details>
+
+    <p>
+      画面の上部に「<strong>API</strong>」 と書かれた入力欄、 「<strong>疎通確認</strong>」 ボタン、
+      画面下部に「<strong>🔍 デバッグコンソール</strong>」 が常設されているのが特徴の<strong>学習モードフロント</strong>です。
+    </p>
+
+    <h2>4.4 Colab 側のサーバを起動 + 公開 URL を取得</h2>
+    <p>Ch.3 で書いたサーバをそのまま起動します。 Colab 側で以下のセルを実行:</p>
+
+    <div class="colab-step">
+      <span class="step-tag">📒 セル (Colab) — Ch.3 のサーバ + 公開 URL</span>
+<pre><code class="language-python"># Ch.1 1-A (serve/hit ヘルパ) → 1-G (完成サーバ) を順に実行済みの前提。
+# Ch.3 で作った /api/users 系のハンドラもそのまま生きている前提。
+
+from google.colab.output import serve_kernel_port_as_public
+PUBLIC_URL = serve_kernel_port_as_public(8000)
+print("公開URL:", PUBLIC_URL.rstrip('/'))</code></pre>
+    </div>
+
+    <p>
+      表示された URL を<strong>コピー</strong>して、 ブラウザで開いた <code>index.html</code> の
+      画面上部の<strong>「API」入力欄</strong>にペースト。 末尾の <code>/</code> は付けないこと。
+    </p>
+
+    <h2>4.5 「疎通確認」 を押してみる — ここでつまずく可能性大</h2>
+    <p>
+      フロントの「疎通確認」 ボタンをクリック。 デバッグコンソールに何かが流れるはずですが、
+      多くの場合<strong>赤いエラー</strong> が出ます。
+    </p>
+
+    <div class="expected-output">
+      <span class="lbl">⚠️ デバッグコンソールでよく起きること (1 回目)</span>
+<pre><code>22:30:15 GET /api/me → NETWORK 25ms
+   ⚠️ ネットワークエラー
+   Failed to fetch
+   → サーバが起動しているか / API URL が正しいか確認してください</code></pre>
+    </div>
+
+    <p>
+      原因の多くは <strong>CORS</strong> です。 ここで Web 開発の難所の 1 つに当たります。
+    </p>
+
+    <details open>
+      <summary>📚 コラム: CORS (Cross-Origin Resource Sharing) とは</summary>
+      <p>
+        ブラウザは安全のため、 「<strong>あるオリジンで読み込まれた JavaScript が、 別のオリジンへ勝手に通信するのを止める</strong>」
+        というルールを持っています。 これが <strong>同一オリジンポリシー</strong>。
+      </p>
+      <p>
+        ここで言う <strong>オリジン</strong> = <code>スキーム + ホスト + ポート</code> の組。
+        例えば:
+      </p>
+      <ul>
+        <li><code>http://localhost:5500</code> と <code>http://localhost:8000</code> は<strong>違うオリジン</strong> (ポート違い)</li>
+        <li><code>file://...</code> は<strong>「null」 という特別なオリジン</strong>として扱われる</li>
+        <li><code>file://...</code> から <code>https://abcd.colab.googleusercontent.com</code> へ
+            fetch する → これも<strong>クロスオリジン</strong>でブラウザが標準で止める</li>
+      </ul>
+      <p>
+        止められないようにするには、 <strong>サーバ側</strong>が応答ヘッダで明示的に
+        「自分はこのオリジンからのアクセスを許可します」 と宣言する必要があります。
+        これが <code>Access-Control-Allow-Origin</code>。
+      </p>
+      <p>
+        本教材では学習用に「<strong>誰からでも OK</strong>」 (<code>Access-Control-Allow-Origin: *</code>) で開けます。
+        本番ではちゃんと許可元を絞ります。
+      </p>
+    </details>
+
+    <h2>4.6 サーバの CORS を緩める</h2>
+    <p>
+      Ch.1 で書いた <code>App</code> クラスの <code>_cors</code> メソッドを<strong>丸ごと書き換え</strong>ます。
+      Colab で Ch.1 のセル 1-G の <code>App</code> を再定義するつもりで、 以下のセルを実行:
+    </p>
+
+    <div class="colab-step">
+      <span class="step-tag">📒 セル (Colab) — CORS を全許可にして再定義</span>
+<pre><code class="language-python">import json, traceback
+from urllib.parse import urlparse
+from http.server import BaseHTTPRequestHandler
+
+class App(BaseHTTPRequestHandler):
+    def do_GET(self):     self._dispatch("GET")
+    def do_POST(self):    self._dispatch("POST")
+    def do_OPTIONS(self):
+        # プリフライトリクエストへの応答
+        self.send_response(204)
+        self._cors()
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def _dispatch(self, method):
+        path = urlparse(self.path).path
+        handler = ROUTES.get((method, path))
+        if handler is None:
+            return self._json(404, {"error": "Not Found", "path": path})
+        try:
+            handler(self)
+        except AppError as e:
+            self._json(e.status, {"error": e.message})
+        except Exception as e:
+            traceback.print_exc()
+            self._json(500, {"error": "internal server error", "detail": str(e)})
+
+    def _cors(self):
+        # 学習用: 全オリジン許可 (= 誰からでも叩いて OK)
+        self.send_header("Access-Control-Allow-Origin",  "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+
+    def _read_json(self):
+        n = int(self.headers.get("Content-Length", "0"))
+        raw = self.rfile.read(n) if n else b""
+        try:
+            return json.loads(raw.decode("utf-8")) if raw else {}
+        except json.JSONDecodeError as e:
+            raise bad_request(f"invalid json: {e}")
+
+    def _text(self, status, body):
+        b = body.encode("utf-8"); self.send_response(status); self._cors()
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+
+    def _json(self, status, obj):
+        b = json.dumps(obj, ensure_ascii=False, default=str).encode("utf-8")
+        self.send_response(status); self._cors()
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+
+    def log_message(self, fmt, *args): pass
+
+# 再起動 (Ch.1 の serve helper をそのまま使える)
+serve(App)
+print("CORS 緩和済みのサーバが立ち上がりました")</code></pre>
+    </div>
+
+    <h3>💡 解説</h3>
+    <ul>
+      <li>追加点 1: <strong><code>do_OPTIONS</code></strong> = ブラウザが本リクエストの前に投げる
+          「プリフライト」 への返事。 「このオリジン、 このメソッド、 このヘッダで通信していい?」 を聞かれるので、
+          OK のヘッダだけ付けて中身なしで返す</li>
+      <li>追加点 2: <strong><code>Access-Control-Allow-Origin: *</code></strong> = 全オリジン許可</li>
+      <li><code>_cors</code> を全レスポンス (200/JSON/エラー含む) で呼ぶようにしている</li>
+    </ul>
+
+    <h2>4.7 もう一度「疎通確認」 を押す</h2>
+    <p>
+      フロントの画面に戻って、 もう一度<strong>「疎通確認」</strong> を押してみる。
+    </p>
+
+    <div class="expected-output">
+      <span class="lbl">✅ 期待される結果</span>
+      <ul>
+        <li>API ステータスインジケータ (●) が緑になる</li>
+        <li>デバッグコンソール: <code>GET /api/me → 401</code> もしくは <code>404</code> (= サーバから何かが返ってきている)</li>
+        <li>これで<strong>君の手元のブラウザと Colab のサーバが会話できる状態</strong></li>
+      </ul>
+    </div>
+
+    <p>
+      <strong>これが今日の山場</strong>です。 「自分の PC のブラウザ」 が「Colab で動く Python サーバ」 と
+      話している。 オリジンを越えて、 file:// から HTTPS の Colab URL まで、 リクエスト 1 本が通った。
+    </p>
+
+    <h2>4.8 ガチャ画面のフォームを試す — 期待形式が違うと…</h2>
+    <p>
+      画面に「ログイン or 新規登録」 のフォームがあるので、 適当に <code>alice</code> / <code>secret123</code>
+      で<strong>「新規登録」</strong> を押してみてください。
+    </p>
+
+    <p>
+      高い確率で<strong>「⚠️ 期待形式の応答が返ってきませんでした」</strong> パネルが画面に出ます。
+      なぜか?
+    </p>
+    <ul>
+      <li>フロントは <code>POST /api/register</code> を叩いて、 <code>{"user": {"id": 1, "name": "...", ...}}</code>
+          を期待</li>
+      <li>でも Colab のサーバには <code>/api/register</code> が無く、 404 が返る</li>
+      <li>もしくは Ch.3 で作った <code>/api/users</code> 用のロジックを <code>/api/register</code> に
+          書き直していなければ未対応</li>
+    </ul>
+
+    <p>
+      ここで Ch.3 と同じ「<strong>鸚鵡返し → ハードコード</strong>」 のスパイラルを 1 周回します。
+    </p>
+
+    <h2>4.9 サーバに /api/register を仮実装 — フロントが想像通り動く</h2>
+
+    <div class="colab-step">
+      <span class="step-tag">📒 セル (Colab) — register をハードコードで仮実装</span>
+<pre><code class="language-python">@route("POST", "/api/register")
+def register(h):
+    body = h._read_json()
+    name = (body.get("name") or "").strip() or "anonymous"
+    h._json(200, {
+        "user": {
+            "id": 1,
+            "name": name,
+            "display_name": body.get("display_name") or name,
+            "coins": 1000,
+        }
+    })
+
+@route("GET", "/api/me")
+def me(h):
+    # まだ認証無し。 「未ログイン」 として 401 を返す
+    h._json(401, {"error": "ログインが必要です"})
+
+# サーバを再起動 (App を再評価) する代わりに、 単に新しいルートが ROUTES に追加されたので
+# 上の serve(App) 後でも次のリクエストから有効。
+print("ルート追加完了:", sorted(ROUTES))</code></pre>
+    </div>
+
+    <p>
+      ブラウザに戻って、 もう一度フロントのフォームに <code>alice</code> / <code>secret123</code> で「新規登録」 を押す。
+    </p>
+
+    <div class="expected-output">
+      <span class="lbl">🎉 期待される結果</span>
+      <ul>
+        <li>デバッグコンソール: <code>POST /api/register → 200 ✓ 期待形式</code> (緑色)</li>
+        <li>画面: 「ようこそ alice さん」 「所持コイン: 1000」 と<strong>ガチャ画面</strong>に切り替わる</li>
+        <li>もちろん中身はハードコードなので、 引いても何も起きない (= 次の章以降で本物にする)</li>
+      </ul>
+    </div>
+
+    <p>
+      <strong>本教材で 2 回目の大きな成功体験</strong>: フロントとサーバが繋がって、 画面遷移が起きた。
+      ここから先 (Ch.5〜8) は<strong>サーバの中身を本物にしていく</strong>だけです。
+      フロント側はもう触らない。
+    </p>
+
+    <h2>4.10 残り API もハードコードで通す (任意)</h2>
+    <p>
+      引き続き残りの API をハードコードで埋めると、 フロントの全機能 (ガチャ一覧、 引く、 Box 表示) が
+      ひとまず動きます。 中身はまだ DB を見ていないのでどれを引いても同じ結果になりますが、
+      <strong>フロント側のすべての画面遷移が確認できる</strong>ので、 仕様の見落としを早期に発見できる。
+    </p>
+
+    <div class="colab-step">
+      <span class="step-tag">📒 セル (Colab) — 残り API のハードコード版</span>
+<pre><code class="language-python">@route("POST", "/api/login")
+def login(h):
+    body = h._read_json()
+    name = body.get("name", "alice")
+    h._json(200, {"user": {"id": 1, "name": name, "display_name": name, "coins": 1000}})
+
+@route("POST", "/api/logout")
+def logout(h):
+    h._json(200, {"ok": True})
+
+@route("GET", "/api/gacha/list")
+def gacha_list(h):
+    h._json(200, {"gachas": [
+        {"id": 1, "name": "通常ガチャ",      "price": 100, "pool_size": 12, "total_weight": 505},
+        {"id": 2, "name": "プレミアムガチャ", "price": 300, "pool_size":  7, "total_weight": 175},
+    ]})
+
+@route("POST", "/api/gacha/pull")
+def gacha_pull(h):
+    body = h._read_json()
+    h._json(200, {
+        "gacha":     {"id": body.get("gacha_id", 1), "name": "通常ガチャ", "price": 100},
+        "character": {"id": 10, "name": "ドラゴン", "rarity": 5, "emoji": "🐉"},
+        "obtained_at": "2026-04-27 12:00:00",
+        "coins": 900,
+    })
+
+@route("GET", "/api/box")
+def box(h):
+    h._json(200, {
+        "user": {"id": 1, "name": "alice", "display_name": "alice", "coins": 900},
+        "total_pulls": 1,
+        "items": [{
+            "id": 10, "name": "ドラゴン", "rarity": 5, "emoji": "🐉", "count": 1,
+            "first_obtained_at": "2026-04-27 12:00:00",
+            "last_obtained_at":  "2026-04-27 12:00:00",
+        }],
+    })
+
+print("✅ フロントの全機能をハードコードで埋めた")
+print("ルート一覧:", sorted(ROUTES))</code></pre>
+    </div>
+
+    <p>
+      ブラウザでフロントを<strong>リロード</strong>して、 新規登録 → ガチャ画面 → 「引く」 押下。
+      <strong>必ずドラゴン</strong>が出ます (笑)。 Box にもドラゴンが入る。 デバッグコンソール全緑。
+    </p>
+
+    <h2>4.11 ハードコードの限界と次章への動機</h2>
+    <ul>
+      <li>誰がログインしても全員 alice、 全員 id=1。 サーバが「誰の操作か」 を知らない</li>
+      <li>登録した名前は DB に残らない (Ch.3 で作った users テーブルとは無関係に固定値を返している)</li>
+      <li>引くたびに毎回ドラゴン。 weight も乱数も無視</li>
+      <li>コインは 1000 → 900 で固定、 何回引いても 900</li>
+    </ul>
+
+    <p>
+      でも仕組みとしては、 <strong>フロントが期待する全 API が「形を満たしている」</strong> 状態が確保できました。
+      残るは「中身を本物にする」 だけ。 これを Ch.5 以降で 1 つずつスパイラルでやっていきます。
+    </p>
+
+    <h2>本章のまとめ</h2>
+    <ul>
+      <li>フロント (HTML/CSS/JS) は既製品を手元に保存して、 <code>file://</code> で開ける</li>
+      <li>ブラウザは異なるオリジンへの fetch を止める = <strong>CORS</strong>。
+          サーバに <code>Access-Control-Allow-Origin: *</code> + OPTIONS 対応を追加すれば通る</li>
+      <li>Colab 公開 URL をフロントの API 設定欄に入れれば、 君の PC ⇄ Colab で会話成立</li>
+      <li>API がハードコードでも、 「形が合っていれば」 フロントは動く。 中身は後でいい</li>
+    </ul>
+
+    <div class="pager">
+      <a class="prev" href="./ch03-mvp.html">
+        <span class="lbl">前へ</span>
+        <span class="ttl">← 第 3 章 サーバ × DB MVP</span>
+      </a>
+      <a class="next" href="./ch05-psycopg.html">
+        <span class="lbl">次へ</span>
+        <span class="ttl">第 5 章 中身を本物にする →</span>
+      </a>
+    </div>
+  </main>
+</div>
+<script src="./assets/inject-toc.js"></script>
+<script src="./assets/copy-button.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+</body>
+</html>

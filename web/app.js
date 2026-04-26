@@ -12,6 +12,11 @@ const API = {
     try { return localStorage.getItem("gg_api_base") || "http://localhost:8000"; }
     catch { return "http://localhost:8000"; }
   })(),
+  // Bearer Token (= login/register成功時にサーバから受け取る短いランダム文字列)
+  // ページをリロードしても残るよう localStorage に保存する。
+  token: (() => {
+    try { return localStorage.getItem("gg_token") || null; } catch { return null; }
+  })(),
 };
 $("api-base-input").value = API.base;
 $("api-base-input").addEventListener("change", (e) => {
@@ -19,6 +24,14 @@ $("api-base-input").addEventListener("change", (e) => {
   try { localStorage.setItem("gg_api_base", API.base); } catch {}
   setStatus("idle");
 });
+
+function setToken(t) {
+  API.token = t || null;
+  try {
+    if (t) localStorage.setItem("gg_token", t);
+    else   localStorage.removeItem("gg_token");
+  } catch {}
+}
 
 // ---- ステータスインジケータ --------------------------------------------------
 function setStatus(s) {
@@ -79,10 +92,15 @@ function type(v) {
 async function call(method, path, { body, expect } = {}) {
   const start = performance.now();
   const url = API.base + path;
-  const init = { method, credentials: "include", headers: {} };
+  // file:// + クロスオリジン fetch を素直に通すため credentials は使わない。
+  // 認証は Authorization: Bearer <token> ヘッダで送る。
+  const init = { method, credentials: "omit", headers: {} };
   if (body !== undefined) {
     init.headers["Content-Type"] = "application/json";
     init.body = JSON.stringify(body);
+  }
+  if (API.token) {
+    init.headers["Authorization"] = `Bearer ${API.token}`;
   }
   const result = { method, path, url, body, ts: new Date(), expect };
 
@@ -331,6 +349,7 @@ $("auth-form").addEventListener("submit", async (ev) => {
   }
   const r = await call("POST", `/api/${mode}`, { body: payload, expect: SHAPE.user });
   if (r.shapeOk) {
+    if (r.json.token) setToken(r.json.token);   // Bearer トークンを保存
     setUser(r.json.user);
     await loadAfterLogin();
   } else {
@@ -345,6 +364,7 @@ $("auth-form").addEventListener("submit", async (ev) => {
 
 $("logout-btn").addEventListener("click", async () => {
   await call("POST", "/api/logout", { expect: SHAPE.ok });
+  setToken(null);                // Bearer トークンを破棄
   currentUser = null;
   showAuth();
 });

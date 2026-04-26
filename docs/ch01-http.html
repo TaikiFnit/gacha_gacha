@@ -21,7 +21,7 @@
     <p>
       この章で書く HTTP サーバは、<strong>本章だけで終わらない君の生コードです</strong>。
       Step 1 で最小サーバを動かし、以降のステップでは <strong>同じサーバを書き足し / 書き換え</strong> ながら
-      機能を足していきます。第3章以降は、<strong>ここで育てたサーバをそのまま運んで</strong>
+      機能を足していきます。第4章以降は、<strong>ここで育てたサーバをそのまま運んで</strong>
       ガチャ API へ進化させていきます。
     </p>
 
@@ -61,6 +61,92 @@ Content-Length: 32
     <p>
       Web の上で動くもの全て、結局はこの形のテキストの上に積み上がっています。
     </p>
+
+    <details>
+      <summary>📚 コラム: URL の構造 / localhost / ポート番号</summary>
+      <p>
+        HTTP リクエストの 1 行目には <em>URL のパス部分</em> が入っていました。 では URL 全体は
+        どんな構造をしているのか?
+      </p>
+<pre><code>https://example.com:443/api/users?id=1#top
+└┬─┘   └─────┬─────┘└┬┘└────┬────┘└─┬─┘└┬┘
+スキーム  ホスト    ポート  パス    クエリ フラグメント</code></pre>
+      <ul>
+        <li><strong>スキーム</strong>: <code>http</code> or <code>https</code> (暗号化付き)。 他に
+            <code>ftp</code>, <code>file</code>, <code>ws</code> 等あるが Web では実質この 2 つ</li>
+        <li><strong>ホスト</strong>: 通信相手のマシン名。 <code>example.com</code> のような
+            ドメイン名は DNS で IP アドレスに変換される</li>
+        <li><strong>ポート番号</strong>: 同じマシンに複数のサーバが立っているとき、 番号で識別する
+            (= ビルの号室番号みたいなもの)。 0〜65535 の整数。 1024 未満は OS 予約
+            (HTTP=80、 HTTPS=443、 SSH=22 等)。 自作サーバは 1024 以上を使う (例: 8000、 5500)</li>
+        <li><strong>パス</strong>: サーバ上のリソース位置。 これが Ch.1 で見ている <code>self.path</code></li>
+        <li><strong>クエリ</strong>: <code>?key=value&amp;k2=v2</code> 形式の追加パラメータ。
+            Step 3 で <code>parse_qs</code> で分解した</li>
+        <li><strong>フラグメント</strong>: ページ内アンカー。 サーバには送られず、 ブラウザだけが見る</li>
+      </ul>
+      <p>
+        <strong>localhost</strong> は <strong>「自分のマシン自身」</strong> を指す特別な名前で、
+        IP アドレスでは <code>127.0.0.1</code> (IPv4) または <code>::1</code> (IPv6)。
+        他の人からは見えず、 自分のマシン内だけで完結する通信に使います。 開発中の通常の宛先。
+      </p>
+      <p>
+        Ch.1 のサーバは <code>http://127.0.0.1:8000</code> (= <code>http://localhost:8000</code>)
+        で待ち受けていますが、 これは「自分のマシンの 8000 番ポートに、 暗号化なしの HTTP で繋ぐ」
+        という意味。
+      </p>
+    </details>
+
+    <details>
+      <summary>📚 コラム: HTTP ステータスコード — 数字 3 桁の意味</summary>
+      <p>
+        Step 1 や Step 2 で <code>self.send_response(200)</code> と書きました。 この 3 桁の数字を
+        <strong>HTTP ステータスコード</strong>と呼び、 「サーバがクライアントに何を伝えたいか」 を
+        ザックリ表します。 1 桁目で大別すると:
+      </p>
+      <table>
+        <thead><tr><th>範囲</th><th>意味</th><th>代表例</th></tr></thead>
+        <tbody>
+          <tr><td>1xx</td><td>情報 (めったに見ない)</td><td>100 Continue</td></tr>
+          <tr><td><strong>2xx</strong></td><td><strong>成功</strong></td>
+              <td><strong>200 OK</strong> (普通の成功)、 201 Created (作った)、 204 No Content (返事だけ、 中身なし)</td></tr>
+          <tr><td>3xx</td><td>リダイレクト</td><td>301 Moved Permanently、 302 Found、 304 Not Modified</td></tr>
+          <tr><td><strong>4xx</strong></td><td><strong>クライアントが悪い</strong></td>
+              <td><strong>400 Bad Request</strong> (リクエスト不正)、 <strong>401 Unauthorized</strong> (未ログイン)、
+                  403 Forbidden (権限なし)、 <strong>404 Not Found</strong> (パスが無い)、 418 I'm a teapot (お茶目)</td></tr>
+          <tr><td><strong>5xx</strong></td><td><strong>サーバが悪い</strong></td>
+              <td><strong>500 Internal Server Error</strong> (バグ)、 502 Bad Gateway、 503 Service Unavailable</td></tr>
+        </tbody>
+      </table>
+      <p>
+        覚え方: <strong>4xx は「あなたのリクエストの問題」、 5xx は「サーバ側のバグ」</strong>。
+        ログを見たとき 5xx が出ていたら自分のコードを疑い、 4xx ならクライアント (= フロントや REST クライアント)
+        の送り方を疑う、 というのが基本の切り分け。
+      </p>
+      <p>
+        本教材で頻出するのは: <strong>200 / 400 / 401 / 404 / 500</strong> の 5 つです。
+        それ以外は出てきたときに調べれば十分。
+      </p>
+    </details>
+
+    <details>
+      <summary>📚 ヒント: ブラウザの DevTools (開発者ツール) の Network タブ</summary>
+      <p>
+        ブラウザは <strong>すべての HTTP 往復を全部記録</strong> していて、 開発者ツールから覗けます。
+        本教材では Ch.4 以降で重要になります。
+      </p>
+      <ul>
+        <li><strong>開き方</strong>: ブラウザのページ上で 右クリック → 「検証」 (Inspect) → 上タブの「Network」
+            (Chrome / Edge) または「ネットワーク」 (Firefox)</li>
+        <li><strong>キーボードショートカット</strong>: macOS は <kbd>⌥⌘I</kbd>、 Windows/Linux は <kbd>Ctrl+Shift+I</kbd></li>
+        <li>ページを再読み込みすると、 そのページが投げた HTTP リクエストが全部一覧で出る</li>
+        <li>1 行クリック → リクエストヘッダ、 レスポンスヘッダ、 ステータスコード、 ボディ、 所要時間 が見える</li>
+      </ul>
+      <p>
+        本教材の学習モードフロント (Ch.4 で登場) には独自のデバッグコンソールが付いていますが、
+        Network タブはそれと同じ情報を <em>あらゆる Web サイト</em>で見られる汎用ツール。
+        覚えておくと普段使うサイトの裏側も丸見えになります。
+      </p>
+    </details>
 
     <details>
       <summary>📚 参考: HTTP の下にある TCP — 雰囲気だけ知っておく</summary>
@@ -299,11 +385,102 @@ for path in ["/", "/api/health", "/api/echo?msg=hello%20world", "/missing"]:
     </ul>
 
     <!-- =============================================================== -->
+    <details>
+      <summary>📚 コラム: そもそも JSON とは?</summary>
+      <p>
+        <strong>JSON (JavaScript Object Notation)</strong> は、 構造化データを
+        <em>「人間が読めるテキスト」</em>として表現する形式です。 由来は 2000 年代前半に
+        Douglas Crockford が広めたもので、 JavaScript のオブジェクトリテラル構文を抜き出して
+        <strong>言語を問わず使える書式</strong>に整えた、 という出自。
+        現在は ECMA-404 / RFC 8259 として標準化されています。
+      </p>
+
+      <h4>仕様の核 (これだけ覚えておけば 99% 困らない)</h4>
+      <p>JSON で表せる値は <strong>6 種類</strong> しかありません:</p>
+      <ul>
+        <li><code>"文字列"</code> (二重引用符必須。 シングルクォートは不可)</li>
+        <li><code>123</code>, <code>3.14</code>, <code>-5</code> 等の<strong>数値</strong>
+            (整数と実数の区別なし。 NaN / Infinity は不可)</li>
+        <li><code>true</code> / <code>false</code></li>
+        <li><code>null</code></li>
+        <li><code>[ <em>値</em>, <em>値</em>, ... ]</code> = <strong>配列</strong></li>
+        <li><code>{ "<em>キー</em>": <em>値</em>, ... }</code> = <strong>オブジェクト</strong>
+            (キーは必ず文字列)</li>
+      </ul>
+      <p>つまり「ネストできるリスト/辞書 + 4 種のリテラル」 だけ。 これだけで世界中のあらゆる構造化データが表現されています。</p>
+
+      <h4>JSON が広く使われている理由</h4>
+      <ul>
+        <li><strong>軽い</strong>: XML より圧倒的に冗長性が少ない (タグ閉じが要らない)</li>
+        <li><strong>言語非依存</strong>: ほぼすべての言語に標準/準標準のパーサーがある (Python は <code>json</code>、 JS はそのまま)</li>
+        <li><strong>機械可読 + 人間可読</strong>: そのままターミナルに出して読める</li>
+        <li><strong>web 黎明期からの慣性</strong>: REST API の事実上の標準応答フォーマット</li>
+      </ul>
+
+      <h4>使われどころ</h4>
+      <ul>
+        <li><strong>HTTP API のリクエスト/レスポンスボディ</strong>: 本教材の主役</li>
+        <li>設定ファイル (例: <code>package.json</code>, VS Code の <code>settings.json</code>)。
+            ただし「コメントが書けない」 ため、 <strong>JSON5</strong> や <strong>JSONC</strong> といった
+            派生形式が使われることもある</li>
+        <li>NoSQL の格納形式 (例: MongoDB BSON、 PostgreSQL の <code>jsonb</code> 列)</li>
+        <li>JWT (JSON Web Token) — 認証で使われる短いトークン形式</li>
+      </ul>
+
+      <h4>JSON でハマりやすい所</h4>
+      <ul>
+        <li><strong>シングルクォート不可</strong>: <code>{'a': 1}</code> は<strong>不正な JSON</strong>。
+            必ず <code>{"a": 1}</code></li>
+        <li><strong>末尾カンマ不可</strong>: <code>[1, 2, 3,]</code> は不正</li>
+        <li><strong>コメント不可</strong>: <code>// hello</code> や <code>/* ... */</code> は不正</li>
+        <li><strong>キーは必ず文字列</strong>: <code>{1: "a"}</code> は不正 (<code>{"1": "a"}</code> なら OK)</li>
+        <li><strong>整数の精度</strong>: 仕様上は無限精度だが、 多くの実装は IEEE 754 double の範囲
+            (≈ 2<sup>53</sup>) を超えると桁落ちする</li>
+        <li><strong>日時型は無い</strong>: ISO 8601 文字列 (<code>"2026-04-27T06:30:00Z"</code>) で渡すのが慣例</li>
+      </ul>
+
+      <p>
+        Python での扱いは標準ライブラリ <code>json</code> で:
+      </p>
+<pre><code class="language-python">import json
+json.dumps({"a": 1, "b": [True, None, "hi"]})  # → '{"a": 1, "b": [true, null, "hi"]}'
+json.loads('{"a": 1}')                          # → {"a": 1}  (Python の dict)</code></pre>
+      <p>
+        Python の <code>True</code> / <code>None</code> ↔ JSON の <code>true</code> / <code>null</code>
+        の対応は <code>json</code> モジュールが自動でやってくれます。
+      </p>
+    </details>
+
     <h2>Step 4 — POST で JSON を受け取る</h2>
     <p>
       ガチャを引く API は POST します (= 副作用がある操作)。
       <code>do_POST</code> を増やして、本文の JSON を読み取って返事を作ります。
     </p>
+
+    <div class="callout tip">
+      <span class="label">💻 ブラウザ + REST クライアントで叩く tip</span>
+      <p>
+        ここまでは <code>hit()</code> ヘルパ (= Python から Python サーバを叩く) で動作確認していました。
+        <strong>本物のクライアント</strong>から叩いてみると <em>「サーバを建てている感</em>」 が一気に出ます:
+      </p>
+      <ul>
+        <li><strong>GET</strong>: ブラウザの新しいタブで <code>http://localhost:8000/api/health</code> を開けばOK
+            (Colab で動かしている場合は次の行へ)</li>
+        <li><strong>Colab の場合は外部公開が必要</strong>: 新しいセルに
+          <pre><code class="language-python">from google.colab.output import serve_kernel_port_as_public
+print(serve_kernel_port_as_public(8000))</code></pre>
+          を貼って実行 → 公開 URL が出てくる → ブラウザで開く</li>
+        <li><strong>POST は専用ツール</strong>が要る (ブラウザの URL バーは GET しかできない):
+          <ul>
+            <li><a href="https://hoppscotch.io/" target="_blank">Hoppscotch</a> — Web ブラウザで動く、 登録不要、 一番手軽</li>
+            <li><a href="https://www.postman.com/" target="_blank">Postman</a> — 業界標準のデスクトップアプリ</li>
+            <li><a href="https://insomnia.rest/" target="_blank">Insomnia</a> — Postman より軽量</li>
+            <li><code>!curl -X POST ...</code> — Colab セル内で完結する手段</li>
+          </ul>
+        </li>
+      </ul>
+      <p>これらは Ch.3 (MVP) で本格的に活躍します。 ここでは「あ、 そういうツールがあるんだ」 程度で大丈夫。</p>
+    </div>
 
     <div class="colab-step">
       <span class="step-tag">📒 セル 1-E</span>
@@ -383,11 +560,102 @@ POST echo    : (200, '{"received": {"hi": "there"}}')</code></pre>
     </ul>
 
     <!-- =============================================================== -->
+    <details>
+      <summary>📚 コラム: 「デコレータ」 ってなに?</summary>
+      <p>
+        次のステップで <code>@route("GET", "/api/health")</code> という見慣れない記法が出てきます。
+        これを使う前に、 <strong>デコレータ</strong> という概念をおさえます。 2 段階あります:
+        Python の言語機能としてのデコレータと、 デザインパターンとしてのデコレータ。
+      </p>
+
+      <h4>① Python のデコレータ — 「関数を関数に変換する」 構文</h4>
+      <p>Python では関数も値です。 関数を引数に取って別の関数を返す関数が書けます:</p>
+<pre><code class="language-python">def loud(fn):
+    """fn を呼び出すたびに「呼ばれた!」 と叫ぶ新しい関数を作って返す。"""
+    def wrapped(*args, **kwargs):
+        print(f"呼ばれた! ({fn.__name__})")
+        return fn(*args, **kwargs)
+    return wrapped
+
+def hello(name):
+    return f"hi, {name}"
+
+# 1) 普通に書くと:
+hello = loud(hello)      # ← hello を loud で「装飾」 して再代入
+hello("alice")
+# 呼ばれた! (hello)
+# → 'hi, alice'</code></pre>
+
+      <p>
+        この「<code>関数 = 関数を装飾するもの(関数)</code>」 を毎回書くのは面倒なので、
+        Python は専用の構文糖衣を用意しました。 それが <strong>@</strong>:
+      </p>
+<pre><code class="language-python">@loud                    # ← この一行が「hello = loud(hello)」 と等価
+def hello(name):
+    return f"hi, {name}"</code></pre>
+
+      <p>
+        つまり <code>@デコレータ</code> は <strong>「直後の関数を、 そのデコレータに通したものに置き換える」</strong>
+        ためのショートカット。 関数定義の<em>真上</em>に書くのが約束です。
+      </p>
+
+      <h4>② パラメータを取るデコレータ</h4>
+      <p>
+        次のステップで使う <code>@route("GET", "/api/health")</code> のようにカッコ付きの
+        デコレータは、 もう 1 段ネストします:
+      </p>
+<pre><code class="language-python">def route(method, path):           # ← 引数を受け取って
+    def deco(fn):                  # ← 「関数を装飾する関数」 を返す
+        ROUTES[(method, path)] = fn
+        return fn                  # ← 装飾と言いつつ、 中身はそのまま返す
+    return deco
+
+@route("GET", "/api/health")
+def health(h):
+    h._json(200, {"status": "ok"})
+
+# これは以下と等価:
+# def health(h): ...
+# health = route("GET", "/api/health")(health)
+#                ^^^^^^^^^^^^^^^^^^^^^^ ← deco を返す
+#                                      ^^^^^^^^ ← health を deco に通して、 そのまま返す</code></pre>
+
+      <p>
+        ここで起きているのは「<strong>関数 health を、 ROUTES 辞書に登録するついでに、 中身は変えずに返す</strong>」。
+        次のステップで使う <code>@route</code> はまさにこのパターンです。
+      </p>
+
+      <h4>③ デザインパターンとしての「デコレータパターン」</h4>
+      <p>
+        OOP の世界の<strong>デコレータパターン</strong>は別物 (ですが似ている)。
+        既存のオブジェクトに新しい振る舞いを「ラップ」 して足す GoF パターンの 1 つで、
+        例えば「<em>BufferedReader が FileReader をラップして読み込みバッファ機能を足す</em>」 ような
+        構造を指します。
+      </p>
+      <p>
+        Python のデコレータ構文 (@) は<strong>関数を別の関数でラップする</strong>使い方が多く、
+        パターンとしてのデコレータと精神的には同じ (= 既存のものを包んで新しい振る舞いを足す)。
+        ただし<strong>名前が同じだけで別概念</strong> として理解しておくと、 文脈で混同しません。
+      </p>
+
+      <h4>もっと知るには</h4>
+      <ul>
+        <li>Python 公式ドキュメント — <a href="https://docs.python.org/ja/3/glossary.html#term-decorator" target="_blank">デコレータ用語</a></li>
+        <li><code>functools.wraps</code> — 装飾後の関数の <code>__name__</code> や docstring を元に保つお作法</li>
+        <li>典型例: Flask の <code>@app.route(...)</code>、 FastAPI の <code>@app.get(...)</code>、
+            Django の <code>@login_required</code>、 pytest の <code>@pytest.fixture</code></li>
+      </ul>
+    </details>
+
     <h2>Step 5 — リファクタ: ルーター辞書にまとめる</h2>
     <p>
       ハンドラが増えると <code>do_GET</code> / <code>do_POST</code> 内の if/elif の山になります。
       <code>(method, path) → handler</code> の<strong>辞書</strong>でディスパッチする形に書き換えます。
       <strong>機能は変わらない</strong>ので、Step 4 のテストがそのままパスすれば成功です。
+    </p>
+    <p>
+      ここで初めて <strong>デコレータ</strong> (<code>@route("GET", ...)</code>) が登場します。
+      上のコラムを先に開いておくと、 これから書くコードがすんなり読めます。
     </p>
 
     <div class="colab-step">
@@ -594,7 +862,7 @@ print("健康確認:", hit("GET",  "/api/health"))</code></pre>
     <h2>仕上げ — 完成したサーバを持ち帰る</h2>
     <p>
       Step 6 のセルが、君が育てた HTTP サーバの完成版です。
-      <strong>第3章以降では、このコードに DB 呼び出しを足してガチャ API に進化させていきます</strong>。
+      <strong>第4章以降では、このコードに DB 呼び出しを足してガチャ API に進化させていきます</strong>。
     </p>
 
     <div class="callout note">
@@ -612,7 +880,7 @@ print("健康確認:", hit("GET",  "/api/health"))</code></pre>
       <p>リポジトリには <code>server/app.py</code> という「ガチャの全 API まで仕上げた版」 が
         置いてあります。 これは<strong>君と同じスパイラルを最後まで回し終わった結果</strong>であって、
         正しい answer = ここで君が育ててきたコードです。</p>
-      <p>第3章以降、自分のコードと突き合わせながら少しずつ DB 呼び出しを足していけば、
+      <p>第4章以降、自分のコードと突き合わせながら少しずつ DB 呼び出しを足していけば、
         最終的に <code>server/app.py</code> と同じ機能のサーバが手元に出来上がります。</p>
     </div>
 

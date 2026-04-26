@@ -44,7 +44,53 @@
       重み付き乱択や集計など、ロジックも一癖あります。
     </p>
 
-    <h2>0.2 何を作るのか</h2>
+    <h2>0.2 まず Web の世界の登場人物を整理</h2>
+    <p>
+      本教材を読むのに最低限必要な用語を、 ここで一気にざっくり押さえます。
+      初耳でも構いません。 各章で実際に動かしながら何度も出てくるので、 最初は「ふーん」 で OK。
+    </p>
+
+    <table>
+      <thead><tr><th>用語</th><th>意味 (簡略)</th><th>例</th></tr></thead>
+      <tbody>
+        <tr><td><strong>クライアント</strong></td>
+            <td>サービスを利用する側。 「お客さん」</td>
+            <td>Web ブラウザ、 スマホアプリ、 REST クライアント</td></tr>
+        <tr><td><strong>サーバ</strong></td>
+            <td>サービスを提供する側。 「お店」。 24時間動いてリクエストを待つ</td>
+            <td>Google のサーバ、 ガチャゲームのサーバ</td></tr>
+        <tr><td><strong>フロントエンド</strong></td>
+            <td>ユーザーが直接触る側 (= クライアントの中身)</td>
+            <td>ブラウザで動く HTML/CSS/JS</td></tr>
+        <tr><td><strong>バックエンド</strong></td>
+            <td>裏で動くサーバ側のロジック</td>
+            <td>Python サーバ + DB</td></tr>
+        <tr><td><strong>HTTP</strong></td>
+            <td>クライアントとサーバが「テキストで会話する」 ためのルール (= プロトコル)</td>
+            <td>Ch.1 で詳しくやる</td></tr>
+        <tr><td><strong>API</strong></td>
+            <td>「サーバにこう聞いたら、 こう答えてくれる」 という決まり事の窓口</td>
+            <td><code>GET /api/users</code> でユーザー一覧を返す、 等</td></tr>
+        <tr><td><strong>REST API</strong></td>
+            <td>HTTP で上記の API を提供する、 業界で広く使われるスタイル。
+                URL でリソースを表し、 GET/POST/PUT/DELETE でその操作を表す</td>
+            <td>本教材で作る API はぜんぶ REST スタイル</td></tr>
+        <tr><td><strong>JSON</strong></td>
+            <td>データをテキストで表す形式。 REST API の応答で最頻出</td>
+            <td><code>{"name": "alice", "age": 22}</code></td></tr>
+        <tr><td><strong>データベース (DB)</strong></td>
+            <td>データを永続的に保存する仕組み</td>
+            <td>Ch.2 で詳しくやる</td></tr>
+      </tbody>
+    </table>
+
+    <p>
+      本教材では <strong>バックエンド (= ガチャの API サーバ + DB)</strong> を君が手を動かして作り、
+      フロントエンド (= ガチャ画面) は<strong>既製品</strong>を後から繋げます。
+      Web 開発の中心にあるのが「クライアント ⇄ HTTP ⇄ サーバ ⇄ DB」 の往復、 と覚えておけば道に迷いません。
+    </p>
+
+    <h2>0.3 何を作るのか</h2>
     <p>
       ブラウザで動く、ものすごく素朴なガチャゲームです。
       ログインして、コインを払ってガチャを引き、結果が Box に積まれていく。
@@ -53,8 +99,9 @@
     </p>
     <ul>
       <li>Python 標準ライブラリ <code>http.server</code> (HTTP サーバー)</li>
-      <li><code>psycopg</code> (PostgreSQL ドライバ。これは外部だけど、生 SQL を書く用途なので軽量)</li>
-      <li>素の HTML/CSS/JS (フロント)</li>
+      <li>Python 標準ライブラリ <code>sqlite3</code> (DB)。 学習中はこれだけで十分。
+          仕上げの章で本番想定の PostgreSQL に切り替える</li>
+      <li>素の HTML/CSS/JS (フロント。 既製品を提供します)</li>
     </ul>
 
     <div class="callout note">
@@ -65,7 +112,7 @@
       と、フレームワークが何を肩代わりしているかが透けて見えるようになります。
     </div>
 
-    <h2>0.3 全体アーキテクチャ</h2>
+    <h2>0.4 全体アーキテクチャ</h2>
     <figure>
       <svg viewBox="0 0 760 320" xmlns="http://www.w3.org/2000/svg" role="img"
            aria-label="アーキテクチャ詳細図">
@@ -123,27 +170,28 @@
       <figcaption>各コンポーネントが「どのファイル」に対応するかも添えてあります。</figcaption>
     </figure>
 
-    <h2>0.4 章マップ</h2>
+    <h2>0.5 章マップ</h2>
     <p>
-      章を縦に積み重ねるイメージです。土台 (HTTP/DB) → 接続 (psycopg) →
-      機能ごとの実装 (auth, gacha, box) → 仕上げ (session, 拡張) という流れ。
+      章を縦に積み重ねるイメージです。 土台 (HTTP / DB) → 連結 (MVP) → フロントを繋ぐ → 機能を 1 つずつ
+      育てる (認証 / 抽選 / Box) → 仕上げ (本番想定 + テスト) → 拡張、 という流れ。
     </p>
     <table>
-      <thead><tr><th>章</th><th>テーマ</th><th>キーになる概念</th><th>触るファイル</th></tr></thead>
+      <thead><tr><th>章</th><th>テーマ</th><th>キーになる概念</th></tr></thead>
       <tbody>
-        <tr><td>1</td><td>HTTP サーバー</td><td>HTTPメソッド / ステータス / ヘッダ / 本文</td><td><code>server/app.py</code></td></tr>
-        <tr><td>2</td><td>DB 設計</td><td>PK / FK / 正規化 / 関係</td><td><code>db/schema.sql</code></td></tr>
-        <tr><td>3</td><td>Postgres on Docker</td><td>コンテナ / ボリューム / init script</td><td><code>docker-compose.yml</code></td></tr>
-        <tr><td>4</td><td>psycopg</td><td>connection / cursor / プレースホルダ</td><td><code>server/db.py</code></td></tr>
-        <tr><td>5</td><td>認証</td><td>ハッシュ / ソルト / 反復</td><td><code>server/auth.py</code></td></tr>
-        <tr><td>6</td><td>ガチャ抽選</td><td>重み付き乱択 / トランザクション</td><td><code>server/gacha.py</code></td></tr>
-        <tr><td>7</td><td>Box / JOIN</td><td>JOIN / GROUP BY / 集計</td><td><code>server/app.py</code> (box)</td></tr>
-        <tr><td>8</td><td>セッション</td><td>Cookie / トークン / 期限</td><td><code>server/auth.py</code></td></tr>
-        <tr><td>9</td><td>拡張</td><td>イベント / 永続ストア / リアルタイム</td><td>(全体)</td></tr>
+        <tr><td>1</td><td>HTTP サーバー</td><td>HTTPメソッド / ステータスコード / ヘッダ / 本文</td></tr>
+        <tr><td>2</td><td>DB の基礎</td><td>リレーション / 主キー / 制約 / SQL 基本</td></tr>
+        <tr><td>3</td><td>サーバ × DB を繋ぐ MVP</td><td>REST クライアント、 Colab 公開URL、 INSERT/SELECT</td></tr>
+        <tr><td>4</td><td>フロントを足す</td><td>ブラウザで開く、 CORS、 学習モードフロント</td></tr>
+        <tr><td>5</td><td>本物の register/login/list</td><td>ハンドラ実装、 入力バリデーション、 SQL インジェクション対策</td></tr>
+        <tr><td>6</td><td>認証 + セッション</td><td>パスワードハッシュ / Cookie / トークン</td></tr>
+        <tr><td>7</td><td>ガチャ抽選</td><td>重み付き乱択 / トランザクション</td></tr>
+        <tr><td>8</td><td>Box の集計</td><td>JOIN / GROUP BY / 集計関数</td></tr>
+        <tr><td>9</td><td>本番想定への仕上げ</td><td>ローカル移行、 PostgreSQL / Docker、 ファイル分割、 自動テスト</td></tr>
+        <tr><td>10</td><td>拡張アイディア</td><td>ログインボーナス、 アイドル風生成、 ピックアップ、 ランキング</td></tr>
       </tbody>
     </table>
 
-    <h2>0.5 学習の流儀 — スパイラルで「育てる」</h2>
+    <h2>0.6 学習の流儀 — スパイラルで「育てる」</h2>
     <p>
       AI が一瞬で全部書ける今、それでも自分の手で書く意味があります。
       ただし「お手本を別のところに見て、ノートに写経」という<strong>偽の手書き</strong>はやらない。
@@ -168,7 +216,7 @@
       として参照してください。 君のコードを否定する正解ではなく、進む方向を示す地図として役立ちます。
     </p>
 
-    <h2>0.6 Colab を開いて作業環境を作る</h2>
+    <h2>0.7 Colab を開いて作業環境を作る</h2>
     <p>
       この教材は <strong>Google Colab</strong> 前提で作ってあります。
       ブラウザだけあれば良く、Python も SQLite も最初から入っています。
@@ -227,7 +275,7 @@ print("   中身:", sorted(p.name for p in ROOT.iterdir()))</code></pre>
       </ul>
     </div>
 
-    <h2>0.7 困ったとき</h2>
+    <h2>0.8 困ったとき</h2>
     <ul>
       <li>セルが赤くエラー → エラーメッセージの<strong>最後の 1 行</strong>を読む。
           Python のエラーは大抵、最後の行に「何が」「どこで」起きたかが書いてある</li>

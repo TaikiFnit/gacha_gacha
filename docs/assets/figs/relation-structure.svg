@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 350">
+  <defs>
+    <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#E6002D"/>
+    </marker>
+  </defs>
+
+  <!-- Table -->
+  <g transform="translate(140, 50)">
+    <!-- Table border (Relation) -->
+    <rect x="0" y="0" width="300" height="200" rx="4" ry="4" fill="none" stroke="#1a1a2e" stroke-width="2.5"/>
+
+    <!-- Header row (Attribute) -->
+    <rect x="0" y="0" width="300" height="50" rx="4" ry="4" fill="#fecaca" stroke="#1a1a2e" stroke-width="2.5"/>
+    <!-- Fix bottom corners of header -->
+    <rect x="1" y="30" width="298" height="20" fill="#fecaca"/>
+    <line x1="0" y1="50" x2="300" y2="50" stroke="#1a1a2e" stroke-width="2.5"/>
+
+    <!-- Header text -->
+    <text x="50" y="32" text-anchor="middle" font-family="sans-serif" font-size="16" font-weight="bold" fill="#1a1a2e">id</text>
+    <text x="150" y="32" text-anchor="middle" font-family="sans-serif" font-size="16" font-weight="bold" fill="#1a1a2e">name</text>
+    <text x="250" y="32" text-anchor="middle" font-family="sans-serif" font-size="16" font-weight="bold" fill="#1a1a2e">age</text>
+
+    <!-- Column separators in header -->
+    <line x1="100" y1="0" x2="100" y2="200" stroke="#1a1a2e" stroke-width="1"/>
+    <line x1="200" y1="0" x2="200" y2="200" stroke="#1a1a2e" stroke-width="1"/>
+
+    <!-- Data row 1 (white) -->
+    <rect x="1" y="51" width="298" height="50" fill="#ffffff"/>
+    <text x="50" y="82" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#1a1a2e">1</text>
+    <text x="150" y="82" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#1a1a2e">田中</text>
+    <text x="250" y="82" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#1a1a2e">22</text>
+    <line x1="0" y1="100" x2="300" y2="100" stroke="#1a1a2e" stroke-width="1"/>
+
+    <!-- Data row 2 (light grey) -->
+    <rect x="1" y="101" width="298" height="50" fill="#f9fafb"/>
+    <text x="50" y="132" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#1a1a2e">2</text>
+    <text x="150" y="132" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#1a1a2e">佐藤</text>
+    <text x="250" y="132" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#1a1a2e">17</text>
+    <line x1="0" y1="150" x2="300" y2="150" stroke="#1a1a2e" stroke-width="1"/>
+
+    <!-- Data row 3 (white) -->
+    <rect x="1" y="151" width="298" height="48" fill="#ffffff"/>
+    <text x="50" y="182" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#1a1a2e">3</text>
+    <text x="150" y="182" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#1a1a2e">鈴木</text>
+    <text x="250" y="182" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#1a1a2e">25</text>
+  </g>
+
+  <!-- Annotation: Relation (table whole) -->
+  <line x1="110" y1="50" x2="110" y2="250" stroke="#E6002D" stroke-width="2"/>
+  <line x1="110" y1="50" x2="120" y2="50" stroke="#E6002D" stroke-width="2"/>
+  <line x1="110" y1="250" x2="120" y2="250" stroke="#E6002D" stroke-width="2"/>
+  <line x1="110" y1="150" x2="60" y2="150" stroke="#E6002D" stroke-width="2"/>
+  <text x="55" y="140" text-anchor="end" font-family="sans-serif" font-size="14" font-weight="bold" fill="#E6002D">リレーション</text>
+  <text x="55" y="160" text-anchor="end" font-family="sans-serif" font-size="13" font-weight="bold" fill="#E6002D">(Relation)</text>
+
+  <!-- Annotation: Attribute (header row) -->
+  <line x1="540" y1="45" x2="445" y2="72" stroke="#E6002D" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <text x="545" y="36" text-anchor="start" font-family="sans-serif" font-size="14" font-weight="bold" fill="#E6002D">アトリビュート</text>
+  <text x="545" y="54" text-anchor="start" font-family="sans-serif" font-size="13" font-weight="bold" fill="#E6002D">(Attribute) = 列</text>
+
+  <!-- Annotation: Tuple (data row 2) -->
+  <rect x="141" y="151" width="298" height="50" fill="#E6002D" fill-opacity="0.08" rx="2" ry="2"/>
+  <line x1="540" y1="280" x2="445" y2="180" stroke="#E6002D" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <text x="545" y="272" text-anchor="start" font-family="sans-serif" font-size="14" font-weight="bold" fill="#E6002D">タプル</text>
+  <text x="545" y="292" text-anchor="start" font-family="sans-serif" font-size="13" font-weight="bold" fill="#E6002D">(Tuple) = 行</text>
+</svg>
