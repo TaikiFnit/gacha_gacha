@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第9章 拡張: クッキークリッカー化への道 — gacha_gacha</title>
+<link rel="stylesheet" href="./assets/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar"></aside>
+  <main>
+    <div class="meta-bar">
+      <span class="badge">Chapter 9</span>
+      <span class="badge draft">骨子のみ</span>
+    </div>
+    <h1>第 9 章 — 拡張: クッキークリッカー化への道</h1>
+
+    <p>
+      ガチャだけで終わらせず、<em>遊び続けられるゲーム</em> に発展させたい人向けの章。
+      テーブル設計の拡張ポイントと、必要になる新しい技術要素を整理します。
+    </p>
+
+    <h2>追加していきたいゲーム機能</h2>
+    <ul>
+      <li>毎日 1 回のログインボーナス (= スケジュール / 一意制約)</li>
+      <li>キャラを「装備」して時間あたり coins が増えるアイドル系</li>
+      <li>キャラのレベルアップ (= 同じキャラを重ねる「重複処理」)</li>
+      <li>イベントガチャ (期間限定 weight)</li>
+      <li>フレンド / ランキング (= ユーザー間 JOIN)</li>
+    </ul>
+
+    <h2>必要になる技術要素</h2>
+    <ol>
+      <li>サーバー側スケジューラ (cron / APScheduler)</li>
+      <li>イベントの「期間」を持つテーブル設計 (<code>tstzrange</code>)</li>
+      <li>キャラの状態を持つ <code>user_characters</code> 拡張 (level, exp)</li>
+      <li>WebSocket / SSE でのリアルタイム反映</li>
+      <li>キャッシュ層 (Redis) 導入の動機</li>
+      <li>監視 / ログ / 計測 (普通のWeb運用)</li>
+    </ol>
+
+    <h2>マイグレーションの話</h2>
+    <p>
+      テーブルが増える/カラムが増えると、<em>本番のデータを残したまま</em>
+      スキーマを変える「マイグレーション」が必要になります。
+      手書き SQL でやる方法、Alembic のようなツールに任せる方法、
+      の比較も学習価値が高いところ。
+    </p>
+
+    <h2>参照コード</h2>
+    <ul>
+      <li>(本章は将来の自分のためのアウトライン。ここから新しいブランチを切ろう)</li>
+    </ul>
+
+    <div class="pager">
+      <a class="prev" href="./ch08-session.html"><span class="lbl">前へ</span><span class="ttl">← 第 8 章</span></a>
+      <a class="next" href="./index.html"><span class="lbl">完</span><span class="ttl">→ 目次に戻る</span></a>
+    </div>
+  </main>
+</div>
+<script src="./assets/inject-toc.js"></script>
+</body>
+</html>

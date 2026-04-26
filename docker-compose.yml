@@ -1,0 +1,35 @@
+# ----------------------------------------------------------------------
+# 学習用 PostgreSQL 起動定義
+#
+# `docker compose up -d` で立ち上がります。
+# - ポート 5432 を localhost に公開
+# - db/schema.sql, db/seed.sql は初回起動時に自動実行される
+#   (Postgres 公式イメージは /docker-entrypoint-initdb.d 配下を
+#    アルファベット順に実行する仕様)
+# - データは Docker のボリューム gacha_pgdata に永続化される
+#   壊したくなったら `docker compose down -v` でボリュームごと消す
+# ----------------------------------------------------------------------
+services:
+  db:
+    image: postgres:16
+    container_name: gacha_pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gacha
+      POSTGRES_USER: gacha
+      POSTGRES_PASSWORD: gacha
+      TZ: Asia/Tokyo
+    ports:
+      - "5432:5432"
+    volumes:
+      - gacha_pgdata:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./db/seed.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gacha -d gacha"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  gacha_pgdata:

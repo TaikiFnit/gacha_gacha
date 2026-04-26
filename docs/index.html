@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gacha_gacha 教材 — 目次</title>
+<link rel="stylesheet" href="./assets/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar"></aside>
+  <main>
+    <div class="meta-bar">
+      <span class="badge">教材</span>
+      <span>所要時間: 完走で 12〜18 時間</span>
+    </div>
+
+    <h1>📘 gacha_gacha — バックエンドとデータベースを「自分の手」で覚える</h1>
+
+    <p>
+      この教材は、ガチャシステムを題材にして
+      <strong>HTTP サーバー / PostgreSQL / Python</strong>
+      を一気通貫で学ぶための連動ドキュメントです。
+      隣のディレクトリ <code>../server/</code> <code>../db/</code> <code>../web/</code>
+      に置いてあるコードをそのまま読みながら進めます。
+    </p>
+
+    <div class="callout tip">
+      <span class="label">💡 学び方</span>
+      <p>各章は「読んで終わり」ではなく、<strong>自分で 1 ステップずつ書いて積み上げる</strong>
+        構成です。<code>exercises/chXX/stepN_*.{py,sql}</code> に各ステップの
+        「答え」が置いてあります。まずは<strong>見ずに</strong>課題を解き、
+        詰まったら答えを開いて差分を読み、動いたら宿題に進む、というループを回してください。</p>
+      <p>最終的に手元に積み上がったコードは、リポジトリ直下の <code>server/</code> /
+        <code>db/</code> と<strong>ほぼ同じ形</strong>になります。フルセット (= 答え) は
+        いつでもそこから読めます。</p>
+    </div>
+
+    <div class="callout note">
+      <span class="label">✅ 動作保証</span>
+      本リポジトリの <code>server/app.py</code> は <code>tests/test_e2e_sqlite.py</code>
+      で 27 ケースの E2E 検証を通っています。手元で確認するには
+      <code>python tests/test_e2e_sqlite.py</code> (Docker 不要) を実行してください。
+    </div>
+
+    <h2>このシリーズで作るもの</h2>
+    <p>
+      ブラウザでガチャを引ける小さな Web アプリです。ユーザー登録できて、
+      コインを消費してガチャを引き、結果が Box (所持キャラ一覧) に蓄積されます。
+      フレームワーク (Django, Flask, FastAPI…) は意図的に使っていません。
+      <em>HTTP がどう動き、SQL がどう発行されているか</em>
+      を観察しやすくするためです。
+    </p>
+
+    <figure>
+      <svg viewBox="0 0 700 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="システム構成図">
+        <style>
+          .box { fill: #ffffff; stroke: #4f46e5; stroke-width: 2; rx: 10; }
+          .lbl { font: 600 14px sans-serif; fill: #1f2937; text-anchor: middle; }
+          .sub { font: 12px sans-serif; fill: #6b7280; text-anchor: middle; }
+          .arr { stroke: #4f46e5; stroke-width: 2; fill: none;
+                 marker-end: url(#arrow); }
+          .arr-lbl { font: 12px monospace; fill: #4f46e5; }
+        </style>
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5"
+                  markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#4f46e5"/>
+          </marker>
+        </defs>
+        <rect class="box" x="20"  y="60" width="160" height="120"/>
+        <text class="lbl" x="100" y="110">ブラウザ</text>
+        <text class="sub" x="100" y="130">web/index.html</text>
+        <text class="sub" x="100" y="148">app.js (fetch)</text>
+
+        <rect class="box" x="270" y="60" width="160" height="120"/>
+        <text class="lbl" x="350" y="110">API サーバー</text>
+        <text class="sub" x="350" y="130">server/app.py</text>
+        <text class="sub" x="350" y="148">http.server</text>
+
+        <rect class="box" x="520" y="60" width="160" height="120"/>
+        <text class="lbl" x="600" y="110">PostgreSQL</text>
+        <text class="sub" x="600" y="130">db/schema.sql</text>
+        <text class="sub" x="600" y="148">docker-compose</text>
+
+        <path class="arr" d="M180,110 L270,110"/>
+        <text class="arr-lbl" x="225" y="100" text-anchor="middle">HTTP/JSON</text>
+
+        <path class="arr" d="M430,110 L520,110"/>
+        <text class="arr-lbl" x="475" y="100" text-anchor="middle">psycopg / SQL</text>
+      </svg>
+      <figcaption>システム全体図 (このまま実装に対応している)</figcaption>
+    </figure>
+
+    <h2>目次</h2>
+    <ol>
+      <li><a href="./ch00-overview.html"><strong>第 0 章</strong> 全体像と学び方</a> — このシリーズで何を学ぶか、どう進めるか</li>
+      <li><a href="./ch01-http.html"><strong>第 1 章</strong> HTTPサーバーを建ててみよう</a> — TCP/HTTP/HTTPメソッドからJSONレスポンスまで</li>
+      <li><a href="./ch02-database.html"><strong>第 2 章</strong> データベース基礎とテーブル設計</a> — RDB・PK/FK・正規化・本システムスキーマ</li>
+      <li><a href="./ch03-postgres-docker.html" class="stub"><strong>第 3 章</strong> PostgreSQL を Docker で 🚧</a></li>
+      <li><a href="./ch04-psycopg.html" class="stub"><strong>第 4 章</strong> Pythonから DB を触る (psycopg) 🚧</a></li>
+      <li><a href="./ch05-auth.html" class="stub"><strong>第 5 章</strong> パスワードハッシュとユーザー登録 🚧</a></li>
+      <li><a href="./ch06-gacha-algorithm.html" class="stub"><strong>第 6 章</strong> 重み付き乱択 (ガチャ抽選) 🚧</a></li>
+      <li><a href="./ch07-box-and-join.html" class="stub"><strong>第 7 章</strong> Box と JOIN・集計 🚧</a></li>
+      <li><a href="./ch08-session.html" class="stub"><strong>第 8 章</strong> セッションと簡易認証 🚧</a></li>
+      <li><a href="./ch09-extending.html" class="stub"><strong>第 9 章</strong> 拡張: クッキークリッカー化への道 🚧</a></li>
+    </ol>
+
+    <h2>前提</h2>
+    <ul>
+      <li>プログラミング経験 1〜2 年 (Java / Kotlin など)</li>
+      <li>Python は構文が読める程度で OK。Python 固有の話は都度補足します</li>
+      <li>データベースは「PK / FK を聞いたことがある」レベル想定</li>
+    </ul>
+
+    <h2>使うもの</h2>
+    <ul>
+      <li>Python 3.10 以上</li>
+      <li>Docker / Docker Compose</li>
+      <li>好きなテキストエディタ</li>
+      <li>ブラウザの開発者ツール (Network タブを使えると吉)</li>
+    </ul>
+
+    <div class="pager">
+      <span></span>
+      <a class="next" href="./ch00-overview.html">
+        <span class="lbl">次へ</span>
+        <span class="ttl">第 0 章 全体像と学び方 →</span>
+      </a>
+    </div>
+  </main>
+</div>
+<script src="./assets/inject-toc.js"></script>
+</body>
+</html>

@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第2章 データベース基礎をステップで設計する — gacha_gacha</title>
+<link rel="stylesheet" href="./assets/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar"></aside>
+  <main>
+    <div class="meta-bar">
+      <span class="badge">Chapter 2</span>
+      <span>所要時間: 120〜180 分</span>
+      <span>形式: ステップ式 (6ステップ)</span>
+    </div>
+    <h1>第 2 章 — データベース基礎をステップで設計する</h1>
+
+    <p>
+      第1章でHTTPサーバーの「ガワ」を作った。次は中身を入れる箱、
+      つまりデータベースを<strong>自分で 1 テーブルずつ建てて</strong>いきます。
+      最後には <code>db/schema.sql</code> と同じ形が手元にできあがる。
+    </p>
+
+    <div class="callout tip">
+      <span class="label">📐 学び方</span>
+      各ステップは <span class="file-ref">exercises/ch02/stepN_*.sql</span>
+      に「答え」が置いてあります。まずそれを <strong>読まずに</strong>
+      課題を psql で打って解いてみる。動いたらファイルを開いて差分を見比べる。
+      そして最後に「演習」セクションをやって、DB から怒られる体験を意図的にする。
+    </div>
+
+    <h2>準備: playground 用のDB</h2>
+    <p>
+      本番の <code>gacha</code> DB を汚さないように、練習用の <code>play</code>
+      DB を作ります:
+    </p>
+<pre><code>docker compose exec db psql -U gacha -d gacha -c "CREATE DATABASE play;"
+
+# 対話モードで使うとき
+docker compose exec db psql -U gacha -d play
+
+# ファイルを流し込むとき (ホスト側から)
+docker compose exec -T db psql -U gacha -d play < exercises/ch02/step1_users_only.sql</code></pre>
+
+    <h2>イントロ: RDB の用語を 30 秒で</h2>
+    <table>
+      <thead><tr><th>用語</th><th>意味</th><th>Excel で言うと</th></tr></thead>
+      <tbody>
+        <tr><td>テーブル</td><td>1 種類のデータ</td><td>1 シート</td></tr>
+        <tr><td>カラム</td><td>列。1 種類の属性</td><td>列</td></tr>
+        <tr><td>レコード</td><td>1 件のデータ</td><td>行</td></tr>
+        <tr><td>主キー (PK)</td><td>その行を一意に特定する列</td><td>「No.」列</td></tr>
+        <tr><td>外部キー (FK)</td><td>他のテーブルの主キーを指す列</td><td>VLOOKUP の参照</td></tr>
+      </tbody>
+    </table>
+
+    <!-- =============================================================== -->
+    <h2>Step 1 — users だけ作る</h2>
+
+    <h3>🎯 課題</h3>
+    <p>play DB に <code>users</code> テーブルを作り、3 件 INSERT、
+       SELECT で確認、UPDATE で alice にコインを 500 おまけする。</p>
+
+    <h3>📋 仕様</h3>
+    <ul>
+      <li><code>id</code> は自動採番の主キー (BIGSERIAL)</li>
+      <li><code>name</code> は重複不可 (UNIQUE)</li>
+      <li><code>pass_hash</code> は NOT NULL</li>
+      <li><code>coins</code> は NOT NULL, DEFAULT 1000, CHECK (coins ≥ 0)</li>
+      <li><code>created_at</code> は TIMESTAMPTZ NOT NULL DEFAULT NOW()</li>
+    </ul>
+
+    <h3>💡 ヒント</h3>
+    <ul>
+      <li>採番された id を取りたいなら INSERT の最後に
+          <code>RETURNING id</code> を付ける</li>
+      <li>UPDATE も RETURNING で確認するとデバッグが早い</li>
+    </ul>
+
+    <h3>📄 答え</h3>
+    <p><span class="file-ref">exercises/ch02/step1_users_only.sql</span></p>
+
+    <h3>🧪 演習</h3>
+    <ul>
+      <li>同じ name を 2 回 INSERT すると何と言って怒られる?</li>
+      <li>coins を <code>-1</code> にしようとすると?</li>
+      <li>created_at を入れずに INSERT すると、何が入る?</li>
+    </ul>
+
+    <!-- =============================================================== -->
+    <h2>Step 2 — characters マスタを足す</h2>
+
+    <h3>🎯 課題</h3>
+    <p>キャラクターのマスタテーブルを足す。レア度 1〜5 の整数で、絵文字も持つ。
+       スライム / ウルフ / ナイト / ペガサス / ドラゴンの 5 体を入れる。</p>
+
+    <h3>📋 仕様</h3>
+    <ul>
+      <li><code>rarity</code> は SMALLINT, CHECK (rarity BETWEEN 1 AND 5)</li>
+      <li><code>name</code> は UNIQUE</li>
+      <li><code>emoji</code> は TEXT NOT NULL DEFAULT '❓'</li>
+    </ul>
+
+    <h3>📄 答え</h3>
+    <p><span class="file-ref">exercises/ch02/step2_characters.sql</span></p>
+
+    <h3>🧪 演習</h3>
+    <ul>
+      <li><code>rarity = 9</code> を入れようとして CHECK 違反のメッセージを読む</li>
+      <li>レア度別の件数を出す: <code>SELECT rarity, COUNT(*) FROM ... GROUP BY rarity</code></li>
+    </ul>
+
+    <!-- =============================================================== -->
+    <h2>Step 3 — gachas + 多対多の中間テーブル</h2>
+
+    <h3>🎯 課題</h3>
+    <p>
+      「ガチャ筐体」と「キャラ」は多対多。
+      <strong>1 つのガチャに複数のキャラ、1 つのキャラが複数のガチャに登場し得る</strong>。
+      これを RDB で表現する常套手段が <em>中間テーブル</em>。今回はそこに <code>weight</code>
+      (重み) も持たせる。
+    </p>
+
+    <h3>📋 仕様</h3>
+<pre><code class="language-sql">CREATE TABLE gachas (
+    id    BIGSERIAL PRIMARY KEY,
+    name  TEXT      NOT NULL UNIQUE,
+    price INTEGER   NOT NULL CHECK (price > 0)
+);
+
+CREATE TABLE gacha_items (
+    id           BIGSERIAL PRIMARY KEY,
+    gacha_id     BIGINT    NOT NULL REFERENCES gachas(id)     ON DELETE CASCADE,
+    character_id BIGINT    NOT NULL REFERENCES characters(id) ON DELETE RESTRICT,
+    weight       INTEGER   NOT NULL CHECK (weight > 0),
+    UNIQUE (gacha_id, character_id)
+);</code></pre>
+
+    <h3>💡 ヒント</h3>
+    <ul>
+      <li>排出設定を一気に入れるなら <code>INSERT ... SELECT</code>:
+<pre><code class="language-sql">INSERT INTO gacha_items (gacha_id, character_id, weight)
+SELECT g.id, c.id,
+       CASE c.rarity WHEN 1 THEN 60 WHEN 2 THEN 30 ELSE 10 END
+  FROM gachas g, characters c
+ WHERE g.name = '通常ガチャ';</code></pre>
+      </li>
+      <li>排出表は JOIN + ウィンドウ関数で確率付きにする:
+<pre><code class="language-sql">SELECT c.name, gi.weight,
+       round(gi.weight * 100.0 / sum(gi.weight) over (partition by g.id), 2) AS pct
+  FROM gacha_items gi JOIN gachas g ON g.id=gi.gacha_id
+                       JOIN characters c ON c.id=gi.character_id
+ ORDER BY g.id, pct DESC;</code></pre>
+      </li>
+    </ul>
+
+    <h3>📄 答え</h3>
+    <p><span class="file-ref">exercises/ch02/step3_gachas_and_items.sql</span></p>
+
+    <h3>🧪 演習</h3>
+    <ul>
+      <li>同じ <code>(gacha_id, character_id)</code> を二重に入れる → UNIQUE違反</li>
+      <li>存在しない <code>gacha_id</code> を入れる → FK違反</li>
+      <li><code>DELETE FROM characters WHERE id=1</code> → ON DELETE RESTRICT で守られる</li>
+      <li><code>DELETE FROM gachas</code> → ON DELETE CASCADE で <code>gacha_items</code> も消える</li>
+    </ul>
+
+    <!-- =============================================================== -->
+    <h2>Step 4 — user_characters + トランザクション</h2>
+
+    <h3>🎯 課題</h3>
+    <p>
+      ユーザーの所持品を表す <code>user_characters</code> を作る。
+      ガチャ 1 回引く処理 ( coins -100, 履歴に 1 行 INSERT )を、
+      <strong>トランザクション</strong>で束ねて 1 セットで実行する。
+    </p>
+
+    <h3>📋 仕様</h3>
+    <ul>
+      <li>履歴テーブル。1 回引くごとに 1 行 INSERT</li>
+      <li><code>user_id</code> FK → users (CASCADE)</li>
+      <li><code>character_id</code> FK → characters (RESTRICT)</li>
+      <li><code>obtained_at</code> TIMESTAMPTZ DEFAULT NOW()</li>
+      <li>(user_id) に索引を貼る (Box 表示で何度も WHERE される)</li>
+    </ul>
+
+    <h3>💡 ヒント — ガチャ 1 回の SQL</h3>
+<pre><code class="language-sql">BEGIN;
+  -- 二重消費を防ぐため行ロック
+  SELECT coins FROM users WHERE name='alice' FOR UPDATE;
+  UPDATE users SET coins = coins - 100 WHERE name='alice'
+   RETURNING coins;
+  INSERT INTO user_characters (user_id, character_id)
+  SELECT u.id, c.id
+    FROM users u, characters c
+   WHERE u.name='alice' AND c.name='スライム'
+  RETURNING id, obtained_at;
+COMMIT;</code></pre>
+
+    <h3>📄 答え</h3>
+    <p><span class="file-ref">exercises/ch02/step4_user_characters.sql</span></p>
+
+    <h3>🧪 演習</h3>
+    <ul>
+      <li>BEGIN + FOR UPDATE のあと、別の psql セッションで同じ alice を読みに行ったら何が起きる?
+          (確認したら必ず COMMIT または ROLLBACK で閉じる)</li>
+      <li>ROLLBACK したら INSERT した行は残るか?</li>
+    </ul>
+
+    <!-- =============================================================== -->
+    <h2>Step 5 — JOIN / GROUP BY / ウィンドウ関数で Box を出す</h2>
+
+    <h3>🎯 課題</h3>
+    <p>
+      ここまでで作ったテーブルから、本システムの「Box」(所持キャラ一覧 + 個数)
+      を SQL 1 本で出す。
+    </p>
+
+    <h3>📋 必要なクエリ</h3>
+    <ol>
+      <li>alice の所持キャラ + 個数 (rarity 降順、id 昇順)</li>
+      <li>全キャラ + alice の所持数 (LEFT JOIN: 未所持も列挙)</li>
+      <li>レア度別のコンプ率 (CTE + LEFT JOIN)</li>
+      <li>通常ガチャの排出確率 (ウィンドウ関数)</li>
+    </ol>
+
+    <h3>💡 ヒント</h3>
+    <ul>
+      <li><code>LEFT JOIN</code> で「無いものは NULL」を作る。<code>COUNT(uc.id)</code>
+          のように<strong>非NULLカラム</strong>を数えると、未所持キャラが 0 になる</li>
+      <li>CTE は <code>WITH owned AS (...) SELECT ...</code> で書ける</li>
+      <li>累積確率を出すなら <code>SUM(weight) OVER (ORDER BY weight DESC ROWS UNBOUNDED PRECEDING)</code></li>
+    </ul>
+
+    <h3>📄 答え</h3>
+    <p><span class="file-ref">exercises/ch02/step5_join_aggregate.sql</span></p>
+
+    <h3>🧪 演習</h3>
+    <ul>
+      <li>「未所持の SSR (rarity=5) のみ」を返すクエリ</li>
+      <li>「全ユーザーの所持数ランキング (1人1行, 多い順)」</li>
+      <li>累積確率も付けた排出表</li>
+    </ul>
+
+    <!-- =============================================================== -->
+    <h2>Step 6 — わざと制約に殴られる</h2>
+
+    <h3>🎯 課題</h3>
+    <p>
+      <strong>これは正解を実行する演習ではなく、わざと失敗する SQL を打って</strong>
+      DB が何を守ってくれているかを言葉にする回。
+    </p>
+
+    <h3>試すこと</h3>
+    <ul>
+      <li>NOT NULL: 必須カラムを欠落させて INSERT</li>
+      <li>UNIQUE: 同じ name を 2 回 INSERT</li>
+      <li>CHECK: rarity = 9 / weight = 0 を入れる</li>
+      <li>FK: 存在しない参照先を入れる</li>
+      <li>ON DELETE RESTRICT: 参照されてるキャラを消そうとする</li>
+      <li>ROLLBACK: トランザクションで途中失敗 → 全部巻き戻る</li>
+    </ul>
+
+    <h3>📄 全部入りの "失敗集" </h3>
+    <p><span class="file-ref">exercises/ch02/step6_constraints_play.sql</span></p>
+
+    <p>
+      それぞれのエラーメッセージを読んで、<strong>「自分のアプリコードに同じ
+      バリデーションを書かなくて済む」</strong>のがリレーショナルDBの強みだという
+      ことを実感してください。
+    </p>
+
+    <!-- =============================================================== -->
+    <h2>仕上げ確認: 本物のスキーマと比べる</h2>
+    <p>
+      ここまでで作った 5 テーブル + α が、本番の
+      <span class="file-ref">db/schema.sql</span> とほぼ同じ形になっているはずです。
+      違いは:
+    </p>
+    <ul>
+      <li>本番には <code>sessions</code> テーブルが追加されている (第8章で扱う)</li>
+      <li>本番には <code>(user_id, character_id)</code> の複合索引もある (検索性能用)</li>
+      <li>本番では characters の id を seed で手で振ってある (利便性のため)</li>
+    </ul>
+
+    <h2>本章のまとめ</h2>
+    <ul>
+      <li>テーブルは「同じ事実を 1 箇所だけに」分けて持つ</li>
+      <li>多対多は中間テーブルで表現する。本気の "うまみ" は重みや状態を中間に持てるところ</li>
+      <li><code>NOT NULL / UNIQUE / CHECK / FK</code> はアプリコードの代わりにDBが守ってくれる</li>
+      <li>複数行の更新が一塊なら必ずトランザクション (<code>BEGIN..COMMIT</code>)</li>
+      <li>JOIN / GROUP BY / ウィンドウ関数まで使えると、ビジネスロジックの大半は SQL で書ける</li>
+    </ul>
+
+    <div class="pager">
+      <a class="prev" href="./ch01-http.html">
+        <span class="lbl">前へ</span>
+        <span class="ttl">← 第 1 章 HTTPサーバー</span>
+      </a>
+      <a class="next" href="./ch03-postgres-docker.html">
+        <span class="lbl">次へ</span>
+        <span class="ttl">第 3 章 Postgres を Docker で →</span>
+      </a>
+    </div>
+  </main>
+</div>
+<script src="./assets/inject-toc.js"></script>
+</body>
+</html>

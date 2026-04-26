@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第6章 重み付き乱択 (ガチャ抽選) — gacha_gacha</title>
+<link rel="stylesheet" href="./assets/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar"></aside>
+  <main>
+    <div class="meta-bar">
+      <span class="badge">Chapter 6</span>
+      <span class="badge draft">骨子のみ</span>
+    </div>
+    <h1>第 6 章 — 重み付き乱択 (ガチャ抽選アルゴリズム)</h1>
+
+    <p>
+      ガチャシステムで一番面白い章。<em>「特定の確率で 1 つ選ぶ」</em>
+      を、Python と SQL の 2 通りの実装で書き比べます。
+    </p>
+
+    <h2>学習目標</h2>
+    <ul>
+      <li>重み合計を分母にした抽選 (累積和 + 二分探索) を自分で実装できる</li>
+      <li><code>random.choices</code> がやっていることを説明できる</li>
+      <li>SQL だけで抽選する技 (<code>ORDER BY -ln(random())/weight LIMIT 1</code>) の意味を説明できる</li>
+      <li>大数の法則を使って実装の正しさを検証する方法を知る</li>
+    </ul>
+
+    <h2>扱うトピック</h2>
+    <ol>
+      <li>素朴実装: 重みリストを累積和に変換 → 一様乱数 → 二分探索</li>
+      <li><code>random.choices</code> 版 (本実装はこちら)</li>
+      <li>SQL 版: <em>A-Res</em> 系の重み付きリザバーサンプリング</li>
+      <li>シード固定 (<code>random.Random(seed)</code>) と再現テスト</li>
+      <li>10,000 回引いて、各キャラの出現比が weight 比に近づくか検証</li>
+      <li>ピックアップ実装 (期間中だけ weight を変える) の考え方</li>
+    </ol>
+
+    <h2>参照コード</h2>
+    <ul>
+      <li><span class="file-ref">server/gacha.py</span></li>
+      <li><span class="file-ref">server/app.py</span> の <code>POST /api/gacha/pull</code></li>
+    </ul>
+
+    <h2>演習の例</h2>
+    <ol>
+      <li>累積和 + 二分探索版を自分の手で実装し、本実装と結果が一致することを確認</li>
+      <li>10,000 回シミュレーションして、各キャラの出現比をプロット</li>
+      <li>SSR の weight を 10 倍にしたら出現比はどう変わるか予想 → 検証</li>
+    </ol>
+
+    <div class="pager">
+      <a class="prev" href="./ch05-auth.html"><span class="lbl">前へ</span><span class="ttl">← 第 5 章</span></a>
+      <a class="next" href="./ch07-box-and-join.html"><span class="lbl">次へ</span><span class="ttl">第 7 章 Box と JOIN →</span></a>
+    </div>
+  </main>
+</div>
+<script src="./assets/inject-toc.js"></script>
+</body>
+</html>

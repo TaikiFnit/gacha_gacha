@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第5章 パスワードハッシュとユーザー登録 — gacha_gacha</title>
+<link rel="stylesheet" href="./assets/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar"></aside>
+  <main>
+    <div class="meta-bar">
+      <span class="badge">Chapter 5</span>
+      <span class="badge draft">骨子のみ</span>
+    </div>
+    <h1>第 5 章 — パスワードハッシュとユーザー登録</h1>
+
+    <p>
+      なぜパスワードを平文で保存してはいけないのか、
+      ハッシュとは何か、ソルトと反復は何のためにあるのかを、
+      <span class="file-ref">server/auth.py</span> を題材に解きほぐします。
+    </p>
+
+    <h2>学習目標</h2>
+    <ul>
+      <li>ハッシュと暗号の違いを説明できる</li>
+      <li>レインボーテーブル攻撃 / 辞書攻撃に対する「ソルト」「反復回数」の役割が言える</li>
+      <li>PBKDF2 / bcrypt / Argon2 の関係をざっくり説明できる</li>
+      <li><code>hmac.compare_digest</code> でタイミング攻撃に対抗する理由を理解する</li>
+    </ul>
+
+    <h2>扱うトピック</h2>
+    <ol>
+      <li>「もし DB が漏れたら」を考える</li>
+      <li>SHA-256 を 1 回かけるだけでは弱い理由</li>
+      <li>ソルトを 1 ユーザーごとに生成する</li>
+      <li>反復回数 200,000 はなぜ妥当か (= 体感 10〜100ms 程度)</li>
+      <li>保存形式に「アルゴリズムと反復回数」を含めると将来の移行が楽</li>
+      <li>パスワード強度 (長さ・複雑性) の話</li>
+    </ol>
+
+    <h2>参照コード</h2>
+    <ul>
+      <li><span class="file-ref">server/auth.py</span> の <code>hash_password / verify_password</code></li>
+      <li><span class="file-ref">server/app.py</span> の <code>POST /api/register</code></li>
+    </ul>
+
+    <h2>演習の例</h2>
+    <ol>
+      <li>同じパスワードで 2 ユーザー登録 → <code>pass_hash</code> が異なることを確認 (ソルトの効果)</li>
+      <li>反復回数を 1,000 / 200,000 / 1,000,000 と変えて所要時間を計測</li>
+      <li><code>compare_digest</code> を <code>==</code> に変えてみる (動くが、なぜ危険か)</li>
+    </ol>
+
+    <div class="pager">
+      <a class="prev" href="./ch04-psycopg.html"><span class="lbl">前へ</span><span class="ttl">← 第 4 章</span></a>
+      <a class="next" href="./ch06-gacha-algorithm.html"><span class="lbl">次へ</span><span class="ttl">第 6 章 重み付き乱択 →</span></a>
+    </div>
+  </main>
+</div>
+<script src="./assets/inject-toc.js"></script>
+</body>
+</html>

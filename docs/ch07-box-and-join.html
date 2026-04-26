@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第7章 Box と JOIN — gacha_gacha</title>
+<link rel="stylesheet" href="./assets/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar"></aside>
+  <main>
+    <div class="meta-bar">
+      <span class="badge">Chapter 7</span>
+      <span class="badge draft">骨子のみ</span>
+    </div>
+    <h1>第 7 章 — Box と JOIN・集計</h1>
+
+    <p>
+      所持キャラ一覧 (Box) のような「ユーザー × マスタ」を組み合わせて出す系の API は、
+      JOIN と GROUP BY と集計関数の出番です。
+    </p>
+
+    <h2>学習目標</h2>
+    <ul>
+      <li>INNER / LEFT JOIN の違いを説明できる</li>
+      <li><code>GROUP BY</code> と集計関数 (<code>COUNT / MIN / MAX / SUM</code>) を使い分けられる</li>
+      <li>「ユーザーが持っていないキャラ」を抽出する LEFT JOIN パターンを書ける</li>
+      <li>N+1 問題と、それを JOIN 1 本にまとめる発想を理解する</li>
+    </ul>
+
+    <h2>扱うトピック</h2>
+    <ol>
+      <li>「全キャラ一覧 + 自分の所持数」を 1 クエリで返す (LEFT JOIN + COUNT)</li>
+      <li>レア度別のコンプリート率を出す</li>
+      <li>初獲得日 / 最新獲得日を <code>MIN / MAX</code> で取る</li>
+      <li>サブクエリ vs JOIN — 同じ問題を 2 通りで書く</li>
+      <li>EXPLAIN ANALYZE で実行計画を読む入り口</li>
+    </ol>
+
+    <h2>参照コード</h2>
+    <ul>
+      <li><span class="file-ref">server/app.py</span> の <code>GET /api/box</code></li>
+    </ul>
+
+    <h2>演習の例</h2>
+    <ol>
+      <li>「未所持キャラ」だけを返す API を増やす</li>
+      <li>レア度別のコンプ率 (例: SSR 3/3, SR 2/4) を返すクエリ</li>
+      <li>所持品ランキング (誰が一番ガチャを引いているか) を SQL で出す</li>
+    </ol>
+
+    <div class="pager">
+      <a class="prev" href="./ch06-gacha-algorithm.html"><span class="lbl">前へ</span><span class="ttl">← 第 6 章</span></a>
+      <a class="next" href="./ch08-session.html"><span class="lbl">次へ</span><span class="ttl">第 8 章 セッション →</span></a>
+    </div>
+  </main>
+</div>
+<script src="./assets/inject-toc.js"></script>
+</body>
+</html>

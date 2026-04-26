@@ -1,0 +1,4 @@
+# 学習用バックエンドの依存はこれだけ。
+# psycopg は PostgreSQL の公式 Python ドライバ (バージョン3 系)。
+# [binary] を付けるとビルド済みバイナリ版が入って環境構築が楽。
+psycopg[binary]>=3.1,<4

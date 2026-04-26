@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第3章 PostgreSQL を Docker で動かす — gacha_gacha</title>
+<link rel="stylesheet" href="./assets/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar"></aside>
+  <main>
+    <div class="meta-bar">
+      <span class="badge">Chapter 3</span>
+      <span class="badge draft">骨子のみ (本文は読者が書き足す枠)</span>
+    </div>
+    <h1>第 3 章 — PostgreSQL を Docker で動かす</h1>
+
+    <p>
+      この章では、ローカルマシンを汚さずに PostgreSQL を立ち上げて、
+      <span class="file-ref">db/schema.sql</span> と
+      <span class="file-ref">db/seed.sql</span> が初回起動で自動投入される
+      仕組みを理解します。
+    </p>
+
+    <h2>学習目標</h2>
+    <ul>
+      <li>Docker / コンテナ / イメージ / ボリュームの違いを説明できる</li>
+      <li><code>docker-compose.yml</code> の各キーが何を意味するか言える</li>
+      <li>初期化スクリプトの実行順序 (<code>/docker-entrypoint-initdb.d</code>) を理解する</li>
+      <li>データを残す/消すの操作を切り分けられる (<code>down</code> vs <code>down -v</code>)</li>
+    </ul>
+
+    <h2>扱うトピック</h2>
+    <ol>
+      <li>そもそもなぜ DB はコンテナで動かすのか (環境再現性 / OS差吸収)</li>
+      <li><code>docker compose up -d</code> で起きていること</li>
+      <li>ポート公開 / ボリュームマウント / 環境変数 / ヘルスチェック</li>
+      <li>Postgres の <code>POSTGRES_*</code> 環境変数</li>
+      <li>初期化スクリプトの仕様と落とし穴 (2 回目以降は実行されない)</li>
+      <li><code>psql</code> コンテナ内/ホストから接続する方法 2 通り</li>
+      <li>運用 Tips: データを壊して作り直すワンライナー</li>
+    </ol>
+
+    <h2>参照コード</h2>
+    <ul>
+      <li><span class="file-ref">docker-compose.yml</span></li>
+      <li><span class="file-ref">db/schema.sql</span> / <span class="file-ref">db/seed.sql</span></li>
+    </ul>
+
+    <h2>演習の例</h2>
+    <ol>
+      <li>コンテナを起動 → 停止 → ボリュームを残したまま再起動。データが残ることを確認</li>
+      <li>schema.sql を変更してから <code>docker compose up</code> を再実行 → 反映されないことを確認</li>
+      <li><code>docker compose down -v</code> でボリュームごと消し、再投入されるか確認</li>
+      <li><code>docker compose exec db psql</code> 経由で SQL を実行</li>
+    </ol>
+
+    <div class="pager">
+      <a class="prev" href="./ch02-database.html"><span class="lbl">前へ</span><span class="ttl">← 第 2 章</span></a>
+      <a class="next" href="./ch04-psycopg.html"><span class="lbl">次へ</span><span class="ttl">第 4 章 psycopg 入門 →</span></a>
+    </div>
+  </main>
+</div>
+<script src="./assets/inject-toc.js"></script>
+</body>
+</html>

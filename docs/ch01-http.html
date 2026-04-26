@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第1章 HTTPサーバーをステップで建てる — gacha_gacha</title>
+<link rel="stylesheet" href="./assets/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar"></aside>
+  <main>
+    <div class="meta-bar">
+      <span class="badge">Chapter 1</span>
+      <span>所要時間: 90〜150 分</span>
+      <span>形式: ステップ式 (6ステップ)</span>
+    </div>
+    <h1>第 1 章 — HTTPサーバーをステップで建てる</h1>
+
+    <p>
+      この章は <strong>「読む」より「自分で書く」</strong> ための章です。
+      6 ステップで、TCP ソケットから始めて、最終的には
+      <code>server/app.py</code> と同じ作りのルーター付き HTTP サーバーを
+      自分の手で組み上げます。
+    </p>
+
+    <div class="callout tip">
+      <span class="label">📐 学び方</span>
+      各ステップの「課題」を読んで、まず<strong>何も見ずに</strong>自分で書いてみる。
+      詰まったら「ヒント」を読む。それでも進まなければ「答え (
+      <code>exercises/ch01/stepN_*.py</code>) 」を見て差分を理解する。
+      動いたら<strong>宿題</strong>に挑戦してから次へ。
+    </div>
+
+    <h2>到達点 (この章を抜けるとできること)</h2>
+    <ul>
+      <li>HTTP リクエスト / レスポンスを「テキストの往復」として説明できる</li>
+      <li><code>http.server</code> でメソッド + パス + JSON のサーバーを書ける</li>
+      <li>ルーターを辞書で管理し、例外を JSON エラーに変換できる</li>
+      <li><code>server/app.py</code> の構造を、自分の言葉で説明できる</li>
+    </ul>
+
+    <h2>イントロ: HTTP は「一往復のテキスト」</h2>
+    <p>
+      クライアントが手紙を 1 通送り、サーバーが返事を 1 通返す。
+      手紙の中身はただのテキスト。
+    </p>
+<pre><code>POST /api/login HTTP/1.1
+Host: localhost:8000
+Content-Type: application/json
+Content-Length: 39
+
+{"name":"alice","password":"secret"}</code></pre>
+<pre><code>HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+Content-Length: 24
+
+{"user":{"id":1,"name":"alice"}}</code></pre>
+    <p>
+      この上に何を載せても HTTP。GET も POST も WebSocket の握手も、ぜんぶ
+      最初はこのテキストです。これを<strong>素手で書いて返す</strong>のが Step 1。
+    </p>
+
+    <!-- =============================================================== -->
+    <h2>Step 1 — TCPだけで HTTP風のテキストを返す</h2>
+
+    <h3>🎯 課題</h3>
+    <p>
+      <code>socket</code> モジュールだけで、<code>127.0.0.1:9000</code> で
+      待ち受けるサーバーを書く。<code>curl</code> で接続したら
+      <strong>"hello, raw tcp\n"</strong> を返して、ターミナルに
+      受信したリクエストの全文を表示する。
+    </p>
+
+    <h3>💡 ヒント</h3>
+    <ul>
+      <li><code>socket.socket(AF_INET, SOCK_STREAM)</code> → <code>bind</code> → <code>listen</code> → <code>accept</code></li>
+      <li>受信は <code>conn.recv(4096)</code>。bytes が返る</li>
+      <li>応答は <code>HTTP/1.1 200 OK\r\n</code> から始める。
+          ヘッダの後ろは<strong>空行 (\r\n\r\n)</strong> を必ず入れる</li>
+      <li><code>Content-Length</code> はバイト数。これが嘘だと受信側が固まる</li>
+    </ul>
+
+    <h3>🧪 動作確認</h3>
+<pre><code>python exercises/ch01/step1_socket.py
+# 別ターミナル:
+curl -v http://127.0.0.1:9000/</code></pre>
+    <p>
+      curl の出力に <code>&gt; GET / HTTP/1.1</code> など送信ヘッダ、
+      <code>&lt; HTTP/1.1 200 OK</code> など応答ヘッダが見えればOK。
+    </p>
+
+    <h3>📄 答え</h3>
+    <p><span class="file-ref">exercises/ch01/step1_socket.py</span></p>
+
+    <h3>📝 宿題</h3>
+    <ul>
+      <li>応答ヘッダの <code>Content-Type</code> を <code>text/html</code> に変えて、
+          <code>&lt;h1&gt;hello&lt;/h1&gt;</code> を返してみる。ブラウザでアクセスすると?</li>
+      <li>ステータスを <code>418</code> にしたら curl はどう表示する?
+          (HTTP の遊び心、I'm a teapot)</li>
+    </ul>
+
+    <!-- =============================================================== -->
+    <h2>Step 2 — http.server に乗り換えて Hello GET</h2>
+
+    <h3>🎯 課題</h3>
+    <p>
+      Step 1 では「ヘッダを書いて、空行入れて、本文書いて」を全部手でやった。
+      毎回それは辛いので、Python 標準の <code>http.server</code> に乗り換える。
+      <code>BaseHTTPRequestHandler</code> をサブクラス化し、
+      <code>do_GET</code> をオーバーライドして
+      <code>"hello, http\n"</code> を返す最小サーバーを書く。
+    </p>
+
+    <h3>💡 ヒント</h3>
+    <ul>
+      <li>呼び出し順は <strong>send_response → send_header (複数可) → end_headers → wfile.write</strong>
+          を必ず守る</li>
+      <li><code>HTTPServer((host, port), HandlerClass).serve_forever()</code> で起動</li>
+      <li><code>self.wfile.write(...)</code> は bytes を要求する</li>
+    </ul>
+
+    <h3>🧪 動作確認</h3>
+<pre><code>python exercises/ch01/step2_http_server_min.py
+curl -v http://127.0.0.1:8001/
+curl -v http://127.0.0.1:8001/anything   # 何のパスでも同じ応答が返るはず</code></pre>
+
+    <h3>📄 答え</h3>
+    <p><span class="file-ref">exercises/ch01/step2_http_server_min.py</span></p>
+
+    <h3>📝 宿題</h3>
+    <ul>
+      <li><code>do_POST</code> を追加して、POST には <code>"received POST"</code> を返す</li>
+      <li>ステータスを 500 にして、<code>send_error</code> と <code>send_response</code> の違いを試す</li>
+    </ul>
+
+    <!-- =============================================================== -->
+    <h2>Step 3 — パスで分岐 + クエリ受け取り</h2>
+
+    <h3>🎯 課題</h3>
+    <table>
+      <thead><tr><th>メソッド</th><th>パス</th><th>応答</th></tr></thead>
+      <tbody>
+        <tr><td>GET</td><td><code>/</code></td><td>text/plain で hello</td></tr>
+        <tr><td>GET</td><td><code>/api/health</code></td><td><code>{"status":"ok"}</code></td></tr>
+        <tr><td>GET</td><td><code>/api/echo?msg=X</code></td><td><code>{"you_said":"X"}</code></td></tr>
+        <tr><td>GET</td><td>その他</td><td>404 + <code>{"error":"Not Found","path":...}</code></td></tr>
+      </tbody>
+    </table>
+
+    <h3>💡 ヒント</h3>
+    <ul>
+      <li>パスとクエリを分けるには <code>urllib.parse.urlparse(self.path)</code></li>
+      <li>クエリの解析は <code>urllib.parse.parse_qs(...)</code> →
+          値はリストで返るので <code>q.get("msg", [""])[0]</code> のように取り出す</li>
+      <li>JSON 応答は <code>json.dumps({...}, ensure_ascii=False).encode("utf-8")</code></li>
+    </ul>
+
+    <h3>🧪 動作確認</h3>
+<pre><code>curl http://127.0.0.1:8001/
+curl http://127.0.0.1:8001/api/health
+curl 'http://127.0.0.1:8001/api/echo?msg=hi%20there'
+curl -i http://127.0.0.1:8001/nope</code></pre>
+
+    <h3>📄 答え</h3>
+    <p><span class="file-ref">exercises/ch01/step3_routing.py</span></p>
+
+    <!-- =============================================================== -->
+    <h2>Step 4 — POSTでJSONを受け取る</h2>
+
+    <h3>🎯 課題</h3>
+    <table>
+      <thead><tr><th>メソッド</th><th>パス</th><th>本文</th><th>応答</th></tr></thead>
+      <tbody>
+        <tr><td>POST</td><td><code>/api/echo</code></td><td>任意のJSON</td>
+            <td><code>{"received":...,"size":N}</code></td></tr>
+        <tr><td>POST</td><td><code>/api/sum</code></td><td><code>{"a":n,"b":m}</code></td>
+            <td><code>{"answer":n+m}</code></td></tr>
+      </tbody>
+    </table>
+    <p>
+      JSON が壊れていたら 400 を返す。<code>/api/sum</code> で
+      <code>a</code> か <code>b</code> が無ければ 400。
+    </p>
+
+    <h3>💡 ヒント</h3>
+    <ul>
+      <li>本文の長さは <code>self.headers.get("Content-Length", "0")</code></li>
+      <li>本文は <code>self.rfile.read(n)</code> で bytes として読む</li>
+      <li><code>json.JSONDecodeError</code> を <code>try/except</code> で拾う</li>
+    </ul>
+
+    <h3>🧪 動作確認</h3>
+<pre><code>curl -X POST http://127.0.0.1:8001/api/echo \
+     -H 'Content-Type: application/json' \
+     -d '{"name":"alice","age":7}'
+curl -X POST http://127.0.0.1:8001/api/sum \
+     -H 'Content-Type: application/json' \
+     -d '{"a":1,"b":2}'</code></pre>
+
+    <h3>📄 答え</h3>
+    <p><span class="file-ref">exercises/ch01/step4_post_json.py</span></p>
+
+    <!-- =============================================================== -->
+    <h2>Step 5 — ルーター辞書でデータ駆動に</h2>
+
+    <h3>🎯 課題</h3>
+    <p>
+      <code>do_GET</code> / <code>do_POST</code> 内の if/elif の山をやめて、
+      <code>ROUTES = {(method, path): handler}</code> という辞書でディスパッチする。
+      ハンドラの登録は <code>@route("GET", "/api/health")</code> のように書ける
+      デコレータで。
+    </p>
+
+    <h3>💡 ヒント</h3>
+<pre><code class="language-python">ROUTES = {}
+
+def route(method, path):
+    def deco(fn):
+        ROUTES[(method.upper(), path)] = fn
+        return fn
+    return deco
+
+@route("GET", "/api/health")
+def health(h):
+    h._json(200, {"status": "ok"})
+
+class App(BaseHTTPRequestHandler):
+    def do_GET(self):  self._dispatch("GET")
+    def do_POST(self): self._dispatch("POST")
+    def _dispatch(self, method):
+        handler = ROUTES.get((method, urlparse(self.path).path))
+        ...</code></pre>
+
+    <h3>📄 答え</h3>
+    <p><span class="file-ref">exercises/ch01/step5_router_dict.py</span></p>
+
+    <h3>📝 宿題</h3>
+    <ul>
+      <li><code>@route("DELETE", "/api/echo")</code> を増やして 204 No Content を返す</li>
+      <li>404 のときに「存在するルート一覧」を JSON に含めて、優しくする</li>
+    </ul>
+
+    <!-- =============================================================== -->
+    <h2>Step 6 — 例外をJSONエラーに変換する</h2>
+
+    <h3>🎯 課題</h3>
+    <p>
+      ハンドラ内で <code>raise bad_request("a と b は数値で")</code> と書くと、
+      <strong>自動的に</strong> 400 + <code>{"error": "..."}</code> が返る形を作る。
+      予期しない例外は traceback を stderr に出して 500 を返す。
+    </p>
+
+    <h3>💡 ヒント</h3>
+<pre><code class="language-python">class AppError(Exception):
+    def __init__(self, status, message):
+        super().__init__(message)
+        self.status, self.message = status, message
+
+def bad_request(msg):  return AppError(400, msg)
+def not_found(msg="Not Found"): return AppError(404, msg)
+
+# _dispatch 内:
+try:
+    handler(self)
+except AppError as e:
+    self._json(e.status, {"error": e.message})
+except Exception as e:
+    traceback.print_exc()
+    self._json(500, {"error": "internal server error", "detail": str(e)})</code></pre>
+
+    <h3>📄 答え</h3>
+    <p><span class="file-ref">exercises/ch01/step6_error_handling.py</span></p>
+
+    <h3>📝 仕上げ確認</h3>
+    <p>
+      Step 6 のコードと <span class="file-ref">server/app.py</span> を並べて見比べてください。
+      ・ <code>ROUTES</code> 辞書の作り、・ <code>@route</code> デコレータ、
+      ・ <code>AppError</code>、・ <code>_dispatch</code> の例外ハンドリング —
+      <strong>骨格はまったく同じ</strong>です。
+      本物との差は「ルートの中身が DB を触っているかどうか」だけ。
+      その差を埋めるのが第3〜7章です。
+    </p>
+
+    <h2>本章のまとめ</h2>
+    <ul>
+      <li>HTTP は「ヘッダ + 空行 + 本文」というテキストの往復</li>
+      <li>Python 標準の <code>http.server</code> はそれを肩代わりしてくれる</li>
+      <li>ルーターも例外ハンドリングも、<strong>1 ファイル数十行</strong>で書ける</li>
+      <li>フレームワークが裏でやっていることを、自分の手で書ける状態になった</li>
+    </ul>
+
+    <div class="pager">
+      <a class="prev" href="./ch00-overview.html">
+        <span class="lbl">前へ</span>
+        <span class="ttl">← 第 0 章 全体像と学び方</span>
+      </a>
+      <a class="next" href="./ch02-database.html">
+        <span class="lbl">次へ</span>
+        <span class="ttl">第 2 章 データベース基礎とテーブル設計 →</span>
+      </a>
+    </div>
+  </main>
+</div>
+<script src="./assets/inject-toc.js"></script>
+</body>
+</html>

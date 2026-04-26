@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第0章 全体像と学び方 — gacha_gacha</title>
+<link rel="stylesheet" href="./assets/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar"></aside>
+  <main>
+    <div class="meta-bar">
+      <span class="badge">Chapter 0</span>
+      <span>所要時間: 30 分</span>
+      <span>動かすもの: なし (読み物中心)</span>
+    </div>
+    <h1>第 0 章 — 全体像と学び方</h1>
+
+    <p>
+      最初に、この教材で何をやるのか、なぜやるのか、どう進めるのか、という
+      <em>地図</em> を渡しておきます。地図がなければ、いきなり川に流されている
+      気分になりやすいので。
+    </p>
+
+    <h2>0.1 なぜガチャシステムなのか</h2>
+    <p>
+      バックエンドとデータベースの教材は世の中にたくさんあります。
+      が、典型的な「メモアプリを作る」「ブログを作る」だと、
+      テーブルが 1〜2 個で済んでしまい、<strong>リレーション (関係) を扱う面白さ</strong>
+      が出てきません。ガチャは違います。
+    </p>
+    <ul>
+      <li><strong>ユーザー</strong>がいる (= 認証・所有という概念)</li>
+      <li><strong>キャラ</strong>がいる (= マスタデータ)</li>
+      <li><strong>ガチャ筐体</strong>がいる (= マスタの組み合わせ)</li>
+      <li><strong>排出設定</strong>がある (= 多対多 + 重み)</li>
+      <li><strong>ユーザー所持</strong>がある (= 多対多 + 履歴)</li>
+    </ul>
+    <p>
+      <em>「複数のテーブルを正しく組み合わせて答えを返す」</em>
+      という、データベースの本領が試される題材です。しかも、
+      重み付き乱択や集計など、ロジックも一癖あります。
+    </p>
+
+    <h2>0.2 何を作るのか</h2>
+    <p>
+      ブラウザで動く、ものすごく素朴なガチャゲームです。
+      ログインして、コインを払ってガチャを引き、結果が Box に積まれていく。
+      これを <strong>フレームワークなし</strong> で実装します。
+      具体的にはこの 3 つだけ:
+    </p>
+    <ul>
+      <li>Python 標準ライブラリ <code>http.server</code> (HTTP サーバー)</li>
+      <li><code>psycopg</code> (PostgreSQL ドライバ。これは外部だけど、生 SQL を書く用途なので軽量)</li>
+      <li>素の HTML/CSS/JS (フロント)</li>
+    </ul>
+
+    <div class="callout note">
+      <span class="label">📝 補足</span>
+      実務では Django / FastAPI / Spring Boot のようなフレームワークを使います。
+      でも、いきなりフレームワークから入ると「何が魔法で、何がプロトコルの規定なのか」
+      が混ざってわからなくなります。<strong>素手で 1 度組んでおく</strong>
+      と、フレームワークが何を肩代わりしているかが透けて見えるようになります。
+    </div>
+
+    <h2>0.3 全体アーキテクチャ</h2>
+    <figure>
+      <svg viewBox="0 0 760 320" xmlns="http://www.w3.org/2000/svg" role="img"
+           aria-label="アーキテクチャ詳細図">
+        <style>
+          .box { fill: #fff; stroke: #4f46e5; stroke-width: 2; rx: 10; }
+          .lbl { font: 600 14px sans-serif; fill: #1f2937; text-anchor: middle; }
+          .sub { font: 12px sans-serif; fill: #6b7280; text-anchor: middle; }
+          .src { font: 11px monospace; fill: #4f46e5; text-anchor: middle; }
+          .arr { stroke: #4f46e5; stroke-width: 2; fill: none;
+                 marker-end: url(#a0); }
+          .arr-lbl { font: 11px monospace; fill: #4f46e5; }
+          .layer { font: 11px sans-serif; fill: #6b7280; }
+        </style>
+        <defs>
+          <marker id="a0" viewBox="0 0 10 10" refX="10" refY="5"
+                  markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#4f46e5"/>
+          </marker>
+        </defs>
+
+        <rect class="box" x="20"  y="60" width="200" height="200"/>
+        <text class="lbl" x="120" y="100">ブラウザ</text>
+        <text class="sub" x="120" y="120">(クライアント)</text>
+        <text class="src" x="120" y="160">web/index.html</text>
+        <text class="src" x="120" y="180">web/app.js</text>
+        <text class="src" x="120" y="200">web/style.css</text>
+        <text class="layer" x="120" y="240">役: フォーム + fetch + 描画</text>
+
+        <rect class="box" x="280" y="60" width="200" height="200"/>
+        <text class="lbl" x="380" y="100">API サーバー</text>
+        <text class="sub" x="380" y="120">(Python プロセス)</text>
+        <text class="src" x="380" y="150">server/app.py (http.server)</text>
+        <text class="src" x="380" y="170">server/auth.py</text>
+        <text class="src" x="380" y="190">server/gacha.py</text>
+        <text class="src" x="380" y="210">server/db.py</text>
+        <text class="layer" x="380" y="240">役: ルーティング/JSON/SQL発行</text>
+
+        <rect class="box" x="540" y="60" width="200" height="200"/>
+        <text class="lbl" x="640" y="100">PostgreSQL</text>
+        <text class="sub" x="640" y="120">(Docker コンテナ)</text>
+        <text class="src" x="640" y="160">db/schema.sql</text>
+        <text class="src" x="640" y="180">db/seed.sql</text>
+        <text class="layer" x="640" y="240">役: テーブル/制約/トランザクション</text>
+
+        <path class="arr" d="M220,140 L280,140"/>
+        <text class="arr-lbl" x="250" y="130" text-anchor="middle">HTTP</text>
+        <path class="arr" d="M280,180 L220,180"/>
+        <text class="arr-lbl" x="250" y="200" text-anchor="middle">JSON</text>
+
+        <path class="arr" d="M480,140 L540,140"/>
+        <text class="arr-lbl" x="510" y="130" text-anchor="middle">SQL</text>
+        <path class="arr" d="M540,180 L480,180"/>
+        <text class="arr-lbl" x="510" y="200" text-anchor="middle">rows</text>
+      </svg>
+      <figcaption>各コンポーネントが「どのファイル」に対応するかも添えてあります。</figcaption>
+    </figure>
+
+    <h2>0.4 章マップ</h2>
+    <p>
+      章を縦に積み重ねるイメージです。土台 (HTTP/DB) → 接続 (psycopg) →
+      機能ごとの実装 (auth, gacha, box) → 仕上げ (session, 拡張) という流れ。
+    </p>
+    <table>
+      <thead><tr><th>章</th><th>テーマ</th><th>キーになる概念</th><th>触るファイル</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>HTTP サーバー</td><td>HTTPメソッド / ステータス / ヘッダ / 本文</td><td><code>server/app.py</code></td></tr>
+        <tr><td>2</td><td>DB 設計</td><td>PK / FK / 正規化 / 関係</td><td><code>db/schema.sql</code></td></tr>
+        <tr><td>3</td><td>Postgres on Docker</td><td>コンテナ / ボリューム / init script</td><td><code>docker-compose.yml</code></td></tr>
+        <tr><td>4</td><td>psycopg</td><td>connection / cursor / プレースホルダ</td><td><code>server/db.py</code></td></tr>
+        <tr><td>5</td><td>認証</td><td>ハッシュ / ソルト / 反復</td><td><code>server/auth.py</code></td></tr>
+        <tr><td>6</td><td>ガチャ抽選</td><td>重み付き乱択 / トランザクション</td><td><code>server/gacha.py</code></td></tr>
+        <tr><td>7</td><td>Box / JOIN</td><td>JOIN / GROUP BY / 集計</td><td><code>server/app.py</code> (box)</td></tr>
+        <tr><td>8</td><td>セッション</td><td>Cookie / トークン / 期限</td><td><code>server/auth.py</code></td></tr>
+        <tr><td>9</td><td>拡張</td><td>イベント / 永続ストア / リアルタイム</td><td>(全体)</td></tr>
+      </tbody>
+    </table>
+
+    <h2>0.5 学習の流儀 (これが一番大事かもしれない)</h2>
+    <p>
+      AI が一瞬で全部書ける今、それでも自分の手で書く意味があります。
+      この教材を進めるときは、章ごとに次のループを回してください:
+    </p>
+    <ol>
+      <li>章を最後まで読む。流れだけつかむ</li>
+      <li>該当ファイル (例: <code>server/app.py</code>) を実際に開いて読む</li>
+      <li><strong>動かす</strong>。サーバー起動して curl やブラウザで叩く</li>
+      <li><strong>壊す</strong>。わざと SQL を間違える、ステータスを変える、
+          パスワードチェックを外す。何が起きるか見る</li>
+      <li><strong>直す</strong>。直しながら、なぜそれで動くのかを言語化する</li>
+    </ol>
+
+    <div class="callout try">
+      <span class="label">🛠 やってみる</span>
+      第 1 章に入る前に、まずローカルでサーバーが起動できるか確認しておくと
+      スムーズです。プロジェクト直下で:
+      <pre><code>docker compose up -d
+python -m venv .venv &amp;&amp; source .venv/bin/activate
+pip install -r server/requirements.txt
+python -m server.app</code></pre>
+      <p>「listening on http://localhost:8000」と出たら準備完了。</p>
+    </div>
+
+    <h2>0.6 困ったとき</h2>
+    <ul>
+      <li>DB が起動しない → <code>docker compose logs db</code> でログを確認</li>
+      <li>Python が import できない → 仮想環境がアクティブか確認 (<code>which python</code>)</li>
+      <li>ブラウザでログインできない → 開発者ツール「Network」タブで API のステータスを見る</li>
+      <li>「もう全部わからない」→ <strong>章を 1 つ戻す</strong>。
+          下の層の理解が足りていないことが多いです</li>
+    </ul>
+
+    <div class="pager">
+      <a class="prev" href="./index.html">
+        <span class="lbl">前へ</span>
+        <span class="ttl">← 目次</span>
+      </a>
+      <a class="next" href="./ch01-http.html">
+        <span class="lbl">次へ</span>
+        <span class="ttl">第 1 章 HTTPサーバーを建ててみよう →</span>
+      </a>
+    </div>
+  </main>
+</div>
+<script src="./assets/inject-toc.js"></script>
+</body>
+</html>

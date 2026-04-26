@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第4章 Pythonから DB を触る (psycopg) — gacha_gacha</title>
+<link rel="stylesheet" href="./assets/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar"></aside>
+  <main>
+    <div class="meta-bar">
+      <span class="badge">Chapter 4</span>
+      <span class="badge draft">骨子のみ</span>
+    </div>
+    <h1>第 4 章 — Python から DB を触る (psycopg 入門)</h1>
+
+    <p>
+      ここでは ORM を使わず、生 SQL を投げ、生の行を受け取る感覚を養います。
+      <span class="file-ref">server/db.py</span> がやっていることを行単位で読み解きます。
+    </p>
+
+    <h2>学習目標</h2>
+    <ul>
+      <li>psycopg の <code>connect / cursor / execute / fetch*</code> の使い分けが説明できる</li>
+      <li><strong>パラメータプレースホルダ</strong> (<code>%s</code>) と
+          SQL インジェクションの関係を説明できる</li>
+      <li>commit / rollback と <code>autocommit</code> の違いを理解する</li>
+      <li><code>row_factory=dict_row</code> の意味と便利さを言える</li>
+      <li>本番では <strong>ConnectionPool</strong> を使う理由を説明できる</li>
+    </ul>
+
+    <h2>扱うトピック</h2>
+    <ol>
+      <li>psycopg2 と psycopg(=v3) の違い、なぜ v3 を選んだか</li>
+      <li>接続文字列 (DSN) の組み立て方</li>
+      <li>カーソル経由の SELECT / INSERT / UPDATE</li>
+      <li>プレースホルダ vs 文字列連結 — インジェクション再現実験</li>
+      <li>トランザクション境界をどこに置くか</li>
+      <li>RETURNING を使って採番された id を持ち帰る</li>
+      <li>例外: <code>psycopg.errors.UniqueViolation</code> など主要なエラー</li>
+    </ol>
+
+    <h2>参照コード</h2>
+    <ul>
+      <li><span class="file-ref">server/db.py</span> — 最小ラッパ</li>
+      <li><span class="file-ref">server/app.py</span> 各ハンドラの <code>cur.execute(...)</code></li>
+    </ul>
+
+    <h2>演習の例</h2>
+    <ol>
+      <li>プレースホルダを文字列連結に変えて、<code>'; DROP TABLE users;--</code> を流し込んで何が起きるか観察</li>
+      <li>同じ <code>name</code> でユーザーを 2 回登録して <code>UniqueViolation</code> を補足する</li>
+      <li><code>autocommit=True</code> にして「コミット忘れたら反映されない」現象を再現</li>
+    </ol>
+
+    <div class="pager">
+      <a class="prev" href="./ch03-postgres-docker.html"><span class="lbl">前へ</span><span class="ttl">← 第 3 章</span></a>
+      <a class="next" href="./ch05-auth.html"><span class="lbl">次へ</span><span class="ttl">第 5 章 認証 →</span></a>
+    </div>
+  </main>
+</div>
+<script src="./assets/inject-toc.js"></script>
+</body>
+</html>

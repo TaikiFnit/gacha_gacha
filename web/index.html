@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gacha_gacha</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<header>
+  <h1>🎰 gacha_gacha</h1>
+  <div id="user-area">
+    <span id="welcome" hidden></span>
+    <button id="logout-btn" hidden>ログアウト</button>
+  </div>
+</header>
+
+<main>
+  <!-- ログイン/登録 -->
+  <section id="auth-section">
+    <div class="card">
+      <h2>ログイン or 新規登録</h2>
+      <p class="hint">同じフォームで両方できます。新規ユーザーには 1000 coin が配られます。</p>
+      <form id="auth-form">
+        <label>name <input name="name" autocomplete="username" required minlength="3"></label>
+        <label>password <input name="password" type="password" autocomplete="current-password" required minlength="6"></label>
+        <label>display name (登録時のみ) <input name="display_name" autocomplete="nickname"></label>
+        <div class="row">
+          <button type="submit" data-mode="login">ログイン</button>
+          <button type="submit" data-mode="register">新規登録</button>
+        </div>
+      </form>
+      <p id="auth-error" class="error" hidden></p>
+    </div>
+  </section>
+
+  <!-- ガチャ -->
+  <section id="play-section" hidden>
+    <div class="card">
+      <h2>ガチャを引く</h2>
+      <p>所持コイン: <strong id="coins">-</strong></p>
+      <div id="gacha-list" class="gacha-list"></div>
+      <div id="pull-result" class="pull-result" hidden></div>
+    </div>
+
+    <div class="card">
+      <h2>📦 Box (所持キャラ)</h2>
+      <p><span id="total-pulls">0</span> 回引いた / <span id="unique-count">0</span> 種類</p>
+      <button id="reload-box-btn">最新化</button>
+      <div id="box" class="box-grid"></div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <small>API: <code id="api-base"></code> ｜ ソース: <code>server/app.py</code></small>
+</footer>
+
+<script src="./app.js" type="module"></script>
+</body>
+</html>
