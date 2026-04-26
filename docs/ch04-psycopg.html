@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>第4章 Pythonから DB を触る (psycopg) — gacha_gacha</title>
+<title>第4章 psycopg で本物の DB に繋ぐ — gacha_gacha</title>
 <link rel="stylesheet" href="./assets/style.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
 </head>
@@ -13,52 +13,420 @@
   <main>
     <div class="meta-bar">
       <span class="badge">Chapter 4</span>
-      <span class="badge draft">骨子のみ</span>
+      <span>所要時間: 90〜120 分</span>
+      <span>形式: ハンドラを 1 つずつ DB 接続に置き換え</span>
     </div>
-    <h1>第 4 章 — Python から DB を触る (psycopg 入門)</h1>
+    <h1>第 4 章 — psycopg で本物の DB に繋ぐ</h1>
 
     <p>
-      ここでは ORM を使わず、生 SQL を投げ、生の行を受け取る感覚を養います。
-      <span class="file-ref">server/db.py</span> がやっていることを行単位で読み解きます。
+      前章で <code>my_server.py</code> はフロントの期待通り応答するようになりました。
+      でも全員 <code>id=1</code>、毎回ドラゴン、ブラウザ閉じたら全部リセット。
+      <strong>ここから 1 ハンドラずつ、 PostgreSQL に本物の SQL を投げる形に書き換えていきます</strong>。
+      レスポンス shape はそのまま、<strong>中身だけ実DB</strong>に差し替えるスパイラル。
     </p>
 
-    <h2>学習目標</h2>
+    <div class="callout tip">
+      <span class="label">📐 進め方</span>
+      <p>各スパイラルで:</p>
+      <ol>
+        <li>Ch.3 で書いた <strong>ハンドラの body</strong> を SQL 版に書き換える</li>
+        <li>サーバを再起動 (Ctrl+C → <code>python server/my_server.py</code>)</li>
+        <li>ブラウザでフロントから操作する</li>
+        <li>デバッグコンソールが <strong>✓ 期待形式</strong> のままであること、
+            psql で <strong>実際に DB が変わったこと</strong> を両方確認</li>
+      </ol>
+      <p>shape を変えなければ、フロントは何も気にせず動き続けます。 これが
+        「<strong>API は契約 (= shape)</strong>」 の効力。 サーバ内部はあとからいくらでも変えられる。</p>
+    </div>
+
+    <h2>4.1 psycopg をインストールする</h2>
+    <p>
+      psycopg は PostgreSQL 用の Python ドライバです。 v3 系 (パッケージ名 <code>psycopg</code>)
+      を使います。 <code>[binary]</code> を付けるとビルド済みバイナリが入って楽。
+    </p>
+
+    <div class="colab-step">
+      <span class="step-tag">📒 ターミナル</span>
+<pre><code class="language-bash">cd ~/gacha_gacha
+python -m venv .venv && source .venv/bin/activate    # 既に入っていればスキップ
+pip install "psycopg[binary]>=3.1,<4"
+python -c "import psycopg; print(psycopg.__version__)"</code></pre>
+    </div>
+
+    <div class="expected-output">
+      <span class="lbl">✅ 期待される出力 (バージョンは前後可)</span>
+<pre><code>3.3.3</code></pre>
+    </div>
+
+    <h2>4.2 接続ヘルパを書く: <code>server/db.py</code></h2>
+    <p>
+      毎回接続文字列を組み立てるのは面倒なので、 <strong>「DB を 1 接続して、 with ブロックを抜けるときに自動コミット (失敗時は自動ロールバック)」</strong>
+      を 1 関数にまとめておきます。
+    </p>
+
+    <div class="colab-step">
+      <span class="step-tag">📄 server/db.py (新規)</span>
+<pre><code class="language-python">"""DB 接続ヘルパー。
+
+with get_conn() as conn:
+    with conn.cursor() as cur:
+        cur.execute("SELECT 1")
+        cur.fetchone()
+ブロックを抜けるときに自動コミット (例外時は自動ロールバック)。
+"""
+import os
+from contextlib import contextmanager
+
+import psycopg
+from psycopg.rows import dict_row
+
+
+def _dsn() -> str:
+    """環境変数を見て、無ければ docker-compose のデフォルトを使う。"""
+    return (
+        f"host={os.getenv('PGHOST', 'localhost')} "
+        f"port={os.getenv('PGPORT', '5432')} "
+        f"dbname={os.getenv('PGDATABASE', 'gacha')} "
+        f"user={os.getenv('PGUSER', 'gacha')} "
+        f"password={os.getenv('PGPASSWORD', 'gacha')}"
+    )
+
+
+@contextmanager
+def get_conn():
+    # row_factory=dict_row で結果が辞書になる (= JSON 化しやすい)
+    conn = psycopg.connect(_dsn(), row_factory=dict_row, autocommit=False)
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def healthcheck() -> bool:
+    """DB に届くか確認。サーバ起動時の早期失敗用。"""
+    try:
+        with get_conn() as conn, conn.cursor() as cur:
+            cur.execute("SELECT 1")
+            cur.fetchone()
+        return True
+    except Exception as e:
+        print(f"[db] healthcheck failed: {e}")
+        return False
+</code></pre>
+    </div>
+
+    <h2>4.3 はじめての SELECT で疎通確認</h2>
+    <p>
+      <code>my_server.py</code> をいじる前に、 <code>server/db.py</code> が動くか確認します。
+      ターミナルで小さなスクリプトを実行:
+    </p>
+
+    <div class="colab-step">
+      <span class="step-tag">📒 ターミナル</span>
+<pre><code class="language-bash">cd ~/gacha_gacha
+python -c "
+import sys; sys.path.insert(0, '.')
+from server.db import get_conn
+
+with get_conn() as conn, conn.cursor() as cur:
+    cur.execute('SELECT id, name, rarity, emoji FROM characters ORDER BY rarity DESC LIMIT 5')
+    for row in cur.fetchall():
+        print(row)
+"</code></pre>
+    </div>
+
+    <div class="expected-output">
+      <span class="lbl">✅ 期待される出力</span>
+<pre><code>{'id': 12, 'name': '伝説の勇者', 'rarity': 5, 'emoji': '⚔️'}
+{'id': 11, 'name': '不死鳥', 'rarity': 5, 'emoji': '🔥'}
+{'id': 10, 'name': 'ドラゴン', 'rarity': 5, 'emoji': '🐉'}
+{'id': 9,  'name': 'ドラゴンの卵', 'rarity': 4, 'emoji': '🥚'}
+{'id': 8,  'name': 'ペガサス', 'rarity': 4, 'emoji': '🦄'}</code></pre>
+    </div>
+
+    <h3>💡 解説</h3>
     <ul>
-      <li>psycopg の <code>connect / cursor / execute / fetch*</code> の使い分けが説明できる</li>
-      <li><strong>パラメータプレースホルダ</strong> (<code>%s</code>) と
-          SQL インジェクションの関係を説明できる</li>
-      <li>commit / rollback と <code>autocommit</code> の違いを理解する</li>
-      <li><code>row_factory=dict_row</code> の意味と便利さを言える</li>
-      <li>本番では <strong>ConnectionPool</strong> を使う理由を説明できる</li>
+      <li><code>row_factory=dict_row</code> のおかげで <code>row['name']</code> でアクセスできる
+          (これを指定しないと tuple で <code>row[1]</code> になる)</li>
+      <li><code>with get_conn()</code> ブロックを抜けるとき、 例外が無ければコミット、 あればロールバック</li>
+      <li>seed.sql のデータが効いていない場合は <code>docker compose down -v</code> で
+          ボリュームごと消して、 もう一度 <code>docker compose up -d</code> で再投入</li>
     </ul>
 
-    <h2>扱うトピック</h2>
-    <ol>
-      <li>psycopg2 と psycopg(=v3) の違い、なぜ v3 を選んだか</li>
-      <li>接続文字列 (DSN) の組み立て方</li>
-      <li>カーソル経由の SELECT / INSERT / UPDATE</li>
-      <li>プレースホルダ vs 文字列連結 — インジェクション再現実験</li>
-      <li>トランザクション境界をどこに置くか</li>
-      <li>RETURNING を使って採番された id を持ち帰る</li>
-      <li>例外: <code>psycopg.errors.UniqueViolation</code> など主要なエラー</li>
-    </ol>
+    <h2>4.4 my_server.py で db を import できるようにする</h2>
+    <p>
+      <code>my_server.py</code> の冒頭に追記します。
+    </p>
 
-    <h2>参照コード</h2>
+    <div class="colab-step">
+      <span class="step-tag">📝 my_server.py の上の方に追記</span>
+<pre><code class="language-python">import sys, pathlib
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+from server.db import get_conn, healthcheck</code></pre>
+    </div>
+
+    <p>
+      そして <code>if __name__ == "__main__":</code> ブロックの先頭に <code>healthcheck()</code> を呼ぶ行を足します:
+    </p>
+
+<pre><code class="language-python">if __name__ == "__main__":
+    if not healthcheck():
+        print("PostgreSQL に接続できません。 `docker compose up -d` を先に実行してください")
+        sys.exit(1)
+    addr = ("0.0.0.0", 8000)
+    ...</code></pre>
+
+    <p>
+      これでサーバ起動時に DB 接続を確認するようになります。
+      <code>docker compose down</code> した状態で起動してみると、 <code>healthcheck failed</code>
+      が出て即終了するはず。
+    </p>
+
+    <!-- ============================================================== -->
+    <h2>Spiral 1 — <code>/api/register</code> を本物の INSERT に</h2>
+
+    <p>
+      Ch.3 のハードコード:
+    </p>
+<pre><code class="language-python">@route("POST", "/api/register")
+def register(h):
+    body = h._read_json()
+    name = body.get("name", "anonymous")
+    h._json(200, {"user": {
+        "id": 1, "name": name,
+        "display_name": body.get("display_name") or name,
+        "coins": 1000,
+    }})</code></pre>
+
+    <p>
+      これを実 DB に書き換えます。 <strong>users テーブルに INSERT して、 採番された id を RETURNING で受け取る</strong>。
+      Ch.2 で書いたあのテーブル定義がいよいよ本番投入。
+    </p>
+
+    <div class="colab-step">
+      <span class="step-tag">📝 register ハンドラを書き換え</span>
+<pre><code class="language-python">@route("POST", "/api/register")
+def register(h):
+    body = h._read_json()
+    name = (body.get("name") or "").strip()
+    password = body.get("password") or ""
+    display_name = (body.get("display_name") or "").strip() or name
+
+    # ----- 入力バリデーション (DB に届く前にやる) -----
+    if len(name) < 3 or len(name) > 32:
+        raise bad_request("name は 3〜32 文字")
+    if len(password) < 6:
+        raise bad_request("password は 6 文字以上")
+
+    # ----- DB へ INSERT -----
+    # ⚠️ 学習用に password を平文で入れている。 Ch.5 でハッシュ化する。
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            # 同じ name が既にあるか先に確認 (UNIQUE 制約があるので INSERT しても弾かれるが、
+            # エラーメッセージを分かりやすく返したいのでこの順)
+            cur.execute("SELECT 1 FROM users WHERE name = %s", (name,))
+            if cur.fetchone():
+                raise bad_request("その name は既に使われています")
+
+            cur.execute(
+                """
+                INSERT INTO users (name, pass_hash, display_name)
+                VALUES (%s, %s, %s)
+                RETURNING id, name, display_name, coins
+                """,
+                (name, password, display_name),   # ← password は仮で平文
+            )
+            user = cur.fetchone()
+
+    h._json(200, {"user": user})</code></pre>
+    </div>
+
+    <h3>💡 解説</h3>
     <ul>
-      <li><span class="file-ref">server/db.py</span> — 最小ラッパ</li>
-      <li><span class="file-ref">server/app.py</span> 各ハンドラの <code>cur.execute(...)</code></li>
+      <li><code>%s</code> は psycopg のプレースホルダ。 <strong>絶対に文字列連結で SQL を組まない</strong>
+          (= SQL インジェクション対策)。 たとえば
+          <code>name = "'; DROP TABLE users;--"</code> が来ても安全</li>
+      <li><code>RETURNING id, name, display_name, coins</code> で、 INSERT した行を 1 撃で返してもらう</li>
+      <li><code>row_factory=dict_row</code> なので <code>cur.fetchone()</code> がそのまま JSON にできる辞書</li>
+      <li>ハンドラ内で <code>raise bad_request("...")</code> すると、 Ch.1 で作った <code>_dispatch</code>
+          が 400 + JSON エラーに変換してくれる</li>
     </ul>
 
-    <h2>演習の例</h2>
-    <ol>
-      <li>プレースホルダを文字列連結に変えて、<code>'; DROP TABLE users;--</code> を流し込んで何が起きるか観察</li>
-      <li>同じ <code>name</code> でユーザーを 2 回登録して <code>UniqueViolation</code> を補足する</li>
-      <li><code>autocommit=True</code> にして「コミット忘れたら反映されない」現象を再現</li>
-    </ol>
+    <h3>🧪 動作確認</h3>
+    <p>サーバを再起動して、 ブラウザで「新規登録」 を試します。</p>
+
+    <div class="expected-output">
+      <span class="lbl">✅ 期待される結果</span>
+      <ul>
+        <li>デバッグコンソール: <code>POST /api/register → 200 ✓ 期待形式</code></li>
+        <li>ガチャ画面が出る (Ch.3 と同じ)</li>
+        <li><strong>でも今回は DB に永続化されている!</strong></li>
+      </ul>
+    </div>
+
+    <p>ターミナルで psql を開いて確認:</p>
+
+<pre><code class="language-bash">docker compose exec db psql -U gacha -d gacha -c "SELECT id, name, display_name, coins, created_at FROM users"</code></pre>
+
+    <p>
+      登録した行が見えるはずです。 もう一度同じ name で登録しようとすると、
+      <strong>400 「その name は既に使われています」</strong> が返ります。
+      フロントの「⚠️ 入力エラー (サーバが弾きました)」 フィードバックがそれを表示します。
+    </p>
+
+    <h3>📝 自分でちょっと変えてみる</h3>
+    <ul>
+      <li>UNIQUE 事前チェック (<code>SELECT 1 FROM users WHERE name = %s</code>) を消したらどうなる?
+          → INSERT で <code>psycopg.errors.UniqueViolation</code> が飛ぶ。 まだ補足してないので 500 になる。
+          補足コードを書いてみよう (try/except)</li>
+      <li><code>name</code> を <code>"'; DROP TABLE users; --"</code> にして登録してみる
+          (フロントの input maxlength を一旦外して)。 何も起こらないことを確認 → プレースホルダの威力</li>
+    </ul>
+
+    <!-- ============================================================== -->
+    <h2>Spiral 2 — <code>/api/login</code> を本物の SELECT に</h2>
+
+    <p>
+      ログインも同じ要領。 name で SELECT して、 該当行があれば user 情報を返し、 無ければ 401。
+      <strong>パスワード検証は Ch.5 で扱う</strong>ので、 ここでは name 一致だけでログインを通します
+      (= 怖い実装だが、 段階的に直す)。
+    </p>
+
+    <div class="colab-step">
+      <span class="step-tag">📝 login ハンドラを書き換え</span>
+<pre><code class="language-python">@route("POST", "/api/login")
+def login(h):
+    body = h._read_json()
+    name = (body.get("name") or "").strip()
+    # ⚠️ Ch.5 でパスワード検証 (pass_hash と verify_password) を入れる
+
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, name, display_name, coins FROM users WHERE name = %s",
+            (name,),
+        )
+        user = cur.fetchone()
+    if user is None:
+        raise AppError(401, "name か password が違います")
+    h._json(200, {"user": user})</code></pre>
+    </div>
+
+    <h3>🧪 動作確認</h3>
+    <ul>
+      <li>登録済みの alice でログイン → 通る</li>
+      <li>未登録の bob でログイン → デバッグコンソール <code>401</code>、
+          画面に「❌ 認証が通りませんでした」</li>
+      <li><strong>パスワードを何にしても登録済み name なら通る</strong> (Ch.5 で直す)</li>
+    </ul>
+
+    <!-- ============================================================== -->
+    <h2>Spiral 3 — <code>/api/gacha/list</code> を本物の SELECT JOIN に</h2>
+
+    <p>
+      ハードコードの 2 件固定を、 実 DB の <code>gachas</code> + <code>gacha_items</code> から取って返す形に。
+      <strong>JOIN + GROUP BY + COUNT</strong> がまさに第2章でやったやつ。
+    </p>
+
+    <div class="colab-step">
+      <span class="step-tag">📝 gacha_list ハンドラを書き換え</span>
+<pre><code class="language-python">@route("GET", "/api/gacha/list")
+def gacha_list(h):
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute("""
+            SELECT g.id, g.name, g.price,
+                   COUNT(gi.id)               AS pool_size,
+                   COALESCE(SUM(gi.weight), 0) AS total_weight
+              FROM gachas g
+              LEFT JOIN gacha_items gi ON gi.gacha_id = g.id
+             GROUP BY g.id
+             ORDER BY g.id
+        """)
+        rows = cur.fetchall()
+    h._json(200, {"gachas": rows})</code></pre>
+    </div>
+
+    <h3>💡 解説</h3>
+    <ul>
+      <li><code>LEFT JOIN</code> なので、 排出設定が 1 件もないガチャ筐体があっても落ちない (pool_size=0 で返る)</li>
+      <li><code>GROUP BY g.id</code> + <code>COUNT(gi.id)</code> で各ガチャの排出キャラ数を出す</li>
+      <li><code>COALESCE(SUM(gi.weight), 0)</code> で「合計が NULL なら 0」</li>
+      <li><code>cur.fetchall()</code> は <code>list[dict]</code> なので、 JSON にそのまま入れられる</li>
+    </ul>
+
+    <h3>🧪 動作確認</h3>
+    <p>ブラウザでログイン後、 ガチャ画面に 2 つの筐体が出ているはずです。</p>
+
+    <div class="expected-output">
+      <span class="lbl">✅ デバッグコンソール</span>
+<pre><code>GET /api/gacha/list → 200 ✓ 期待形式
+   📥 サーバが返した本文 (JSON)
+   {
+     "gachas": [
+       { "id": 1, "name": "通常ガチャ",     "price": 100, "pool_size": 12, "total_weight": "505" },
+       { "id": 2, "name": "プレミアムガチャ", "price": 300, "pool_size":  7, "total_weight": "175" }
+     ]
+   }</code></pre>
+    </div>
+
+    <p>
+      ⚠️ <code>total_weight</code> が文字列 <code>"505"</code> になっているのは、
+      PostgreSQL の <code>SUM</code> が <code>numeric</code> 型を返し、 psycopg がそれを
+      <code>Decimal</code> として扱い、 JSON 化時に <code>str</code> に変換するため。
+      フロントの shape チェックは <code>pool_size: number</code> だけ見ているので問題なく ✓ になります。
+    </p>
+
+    <!-- ============================================================== -->
+    <h2>4.5 ここまでで何が変わったか</h2>
+
+    <table>
+      <thead><tr><th>観点</th><th>Ch.3 (ハードコード)</th><th>Ch.4 (実DB)</th></tr></thead>
+      <tbody>
+        <tr><td>同じ name で 2 回登録</td><td>OK (常に id=1)</td><td>2 回目は 400</td></tr>
+        <tr><td>ブラウザ閉じて再度ログイン</td><td>同じ alice で通る (新規でも)</td><td>登録した name しか通らない</td></tr>
+        <tr><td>2 つのアカウント</td><td>区別できない</td><td>id=1, id=2... と独立</td></tr>
+        <tr><td>ガチャ筐体一覧</td><td>固定 2 件</td><td>DB から取得 (将来追加可)</td></tr>
+        <tr><td>サーバを止めると</td><td>状態は元々無いので変化なし</td><td>DB は残る、再起動で復活</td></tr>
+      </tbody>
+    </table>
+
+    <h2>4.6 まだ残ってるもの — 次章への橋渡し</h2>
+    <p>
+      ガチャ画面で「引く」ボタンを押すと、 まだハードコードのままなので毎回ドラゴンが出ます。
+      Box も同じ。 これらは「<strong>誰の操作か</strong>」 を知る必要があるため、
+      <strong>セッション (Cookie + sessions テーブル)</strong> が必要です。
+      これが Ch.5 で扱う話。
+    </p>
+
+    <ul>
+      <li>Ch.5: <code>pass_hash</code> でパスワードハッシュ化、 Cookie でセッション、
+          <code>/api/me</code> と <code>/api/logout</code> を本物に</li>
+      <li>Ch.6: <code>/api/gacha/pull</code> を本物の重み付き乱択 + コイン消費 + トランザクション</li>
+      <li>Ch.7: <code>/api/box</code> を本物の JOIN + GROUP BY + 集計</li>
+    </ul>
+
+    <h2>本章のまとめ</h2>
+    <ul>
+      <li>psycopg は connection → cursor → execute の流れで SQL を発行する</li>
+      <li>パラメータは必ず <code>%s</code> プレースホルダ。 文字列連結は SQL インジェクションの温床</li>
+      <li><code>RETURNING</code> で INSERT/UPDATE の結果をそのまま受け取れる (PostgreSQL の便利機能)</li>
+      <li>shape を維持したままハンドラ内部だけ実DBに置き換えれば、 フロントは何も変わらない =
+          <strong>API が「契約」 として機能している</strong>証</li>
+      <li>UNIQUE / NOT NULL / CHECK は DB が自動で守ってくれるので、 アプリは「分かりやすいエラーに変換する」 だけで済む</li>
+    </ul>
 
     <div class="pager">
-      <a class="prev" href="./ch03-postgres-docker.html"><span class="lbl">前へ</span><span class="ttl">← 第 3 章</span></a>
-      <a class="next" href="./ch05-auth.html"><span class="lbl">次へ</span><span class="ttl">第 5 章 認証 →</span></a>
+      <a class="prev" href="./ch03-postgres-docker.html">
+        <span class="lbl">前へ</span>
+        <span class="ttl">← 第 3 章 ローカル移行 + フロント</span>
+      </a>
+      <a class="next" href="./ch05-auth.html">
+        <span class="lbl">次へ</span>
+        <span class="ttl">第 5 章 認証とセッション →</span>
+      </a>
     </div>
   </main>
 </div>
