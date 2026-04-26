@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>第9章 拡張: クッキークリッカー化への道 — gacha_gacha</title>
+<title>第9章 拡張 — ここから先 — gacha_gacha</title>
 <link rel="stylesheet" href="./assets/style.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
 </head>
@@ -13,50 +13,233 @@
   <main>
     <div class="meta-bar">
       <span class="badge">Chapter 9</span>
-      <span class="badge draft">骨子のみ</span>
+      <span>所要時間: 読み物 30 分 / 着手は数日〜</span>
+      <span>形式: 拡張アイディア集 + 実装ヒント</span>
     </div>
-    <h1>第 9 章 — 拡張: クッキークリッカー化への道</h1>
+    <h1>第 9 章 — 拡張: ここから先</h1>
 
     <p>
-      ガチャだけで終わらせず、<em>遊び続けられるゲーム</em> に発展させたい人向けの章。
-      テーブル設計の拡張ポイントと、必要になる新しい技術要素を整理します。
+      Ch.1 から Ch.8 まで通すと、 ガチャを引いて Box に貯めるだけの
+      <strong>「最小だが本物のゲームバックエンド」</strong>が手元に残ります。
+      ここから先は、 君が遊びたいゲーム性を足していく自分プロジェクトです。
+      この章では「次にどこを膨らませるか」 のメニューと、
+      その実装で必要になりそうなテーブル拡張・SQL パターンを置いておきます。
     </p>
 
-    <h2>追加していきたいゲーム機能</h2>
-    <ul>
-      <li>毎日 1 回のログインボーナス (= スケジュール / 一意制約)</li>
-      <li>キャラを「装備」して時間あたり coins が増えるアイドル系</li>
-      <li>キャラのレベルアップ (= 同じキャラを重ねる「重複処理」)</li>
-      <li>イベントガチャ (期間限定 weight)</li>
-      <li>フレンド / ランキング (= ユーザー間 JOIN)</li>
-    </ul>
+    <div class="callout tip">
+      <span class="label">📐 拡張のスタンス</span>
+      <p>「全部一気に作る」 ではなく <strong>1 機能 = 1 ブランチ</strong>。
+        今までやってきたスパイラル (動かす → 試す → 育てる) を継続。
+        Ch.8 で書いた smoke テストが、 機能追加で既存が壊れないかを守ります。</p>
+    </div>
 
-    <h2>必要になる技術要素</h2>
-    <ol>
-      <li>サーバー側スケジューラ (cron / APScheduler)</li>
-      <li>イベントの「期間」を持つテーブル設計 (<code>tstzrange</code>)</li>
-      <li>キャラの状態を持つ <code>user_characters</code> 拡張 (level, exp)</li>
-      <li>WebSocket / SSE でのリアルタイム反映</li>
-      <li>キャッシュ層 (Redis) 導入の動機</li>
-      <li>監視 / ログ / 計測 (普通のWeb運用)</li>
-    </ol>
-
-    <h2>マイグレーションの話</h2>
+    <!-- ============================================================== -->
+    <h2>9.1 ログインボーナス (デイリー報酬)</h2>
     <p>
-      テーブルが増える/カラムが増えると、<em>本番のデータを残したまま</em>
-      スキーマを変える「マイグレーション」が必要になります。
-      手書き SQL でやる方法、Alembic のようなツールに任せる方法、
-      の比較も学習価値が高いところ。
+      毎日 1 回、 ログインすると 200 coin もらえる、 みたいな仕組み。 ガチャを長く遊ばせる定番。
+    </p>
+    <h3>必要なもの</h3>
+    <ul>
+      <li>テーブル: <code>daily_bonuses (user_id, claimed_on date, amount int)</code> — 1 ユーザー 1 日 1 行</li>
+      <li>UNIQUE 制約: <code>(user_id, claimed_on)</code> ← 二重取得を DB で防ぐ</li>
+      <li>API: <code>POST /api/daily/claim</code> → 既に当日分があれば 400, 無ければ INSERT + UPDATE coins</li>
+    </ul>
+
+<pre><code class="language-sql">CREATE TABLE daily_bonuses (
+    id          BIGSERIAL    PRIMARY KEY,
+    user_id     BIGINT       NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    claimed_on  DATE         NOT NULL DEFAULT (CURRENT_DATE AT TIME ZONE 'Asia/Tokyo')::date,
+    amount      INTEGER      NOT NULL,
+    UNIQUE (user_id, claimed_on)
+);</code></pre>
+
+    <h3>実装のヒント</h3>
+<pre><code class="language-python">@route("POST", "/api/daily/claim")
+def claim_daily(h):
+    AMOUNT = 200
+    with get_conn() as conn:
+        user = h.require_user(conn)
+        with conn.cursor() as cur:
+            try:
+                cur.execute(
+                    """
+                    INSERT INTO daily_bonuses (user_id, amount) VALUES (%s, %s)
+                    RETURNING claimed_on
+                    """,
+                    (user["id"], AMOUNT),
+                )
+                claimed_on = cur.fetchone()["claimed_on"]
+            except psycopg.errors.UniqueViolation:
+                raise bad_request("今日のボーナスはもう受け取り済みです")
+            cur.execute(
+                "UPDATE users SET coins = coins + %s WHERE id = %s RETURNING coins",
+                (AMOUNT, user["id"]),
+            )
+            new_coins = cur.fetchone()["coins"]
+    h._json(200, {"amount": AMOUNT, "claimed_on": claimed_on, "coins": new_coins})</code></pre>
+
+    <p>
+      <strong>UNIQUE 制約に守ってもらう</strong> のがミソ。 アプリ側で「今日のレコードある?」 を SELECT してから INSERT すると、
+      ほぼ同時に 2 リクエスト来たときに両方通ってしまう (TOCTTOU バグ)。 INSERT 一発+ UNIQUE で物理的に 1 行にしておけば、 DB が二重を必ず弾く。
     </p>
 
-    <h2>参照コード</h2>
+    <!-- ============================================================== -->
+    <h2>9.2 アイドル風コイン自動生成</h2>
+    <p>
+      クッキークリッカー的な要素。 「装備しているキャラ × そのレア度 × 経過秒」 で coins が貯まる。
+    </p>
+    <h3>テーブル拡張</h3>
+<pre><code class="language-sql">ALTER TABLE users ADD COLUMN last_collected_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+-- equipping = ユーザーが装備しているキャラ (複数可)
+CREATE TABLE equipped_characters (
+    user_id      BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    character_id BIGINT NOT NULL REFERENCES characters(id) ON DELETE RESTRICT,
+    PRIMARY KEY (user_id, character_id)
+);</code></pre>
+
+    <h3>実装のヒント</h3>
+    <p>
+      pull / box / me 等のエンドポイントで、 アクセスのたびに「last_collected_at から
+      今までで何 coin 貯まったか」 を計算して足す関数 <code>collect(user_id)</code> を呼ぶ。
+      これだけで「ログインしてないときも貯まっている」 体験ができる (サーバ側で時刻差から逆算)。
+    </p>
+
+<pre><code class="language-python">def collect(conn, user_id):
+    """前回回収から今までの分を加算する。 アイドル風自動生成。"""
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT u.coins, u.last_collected_at,
+                   COALESCE(SUM(c.rarity), 0) AS rate
+              FROM users u
+              LEFT JOIN equipped_characters ec ON ec.user_id = u.id
+              LEFT JOIN characters c ON c.id = ec.character_id
+             WHERE u.id = %s
+             GROUP BY u.id
+             FOR UPDATE OF u
+            """,
+            (user_id,),
+        )
+        row = cur.fetchone()
+        elapsed = (datetime.now(timezone.utc) - row["last_collected_at"]).total_seconds()
+        gained  = int(elapsed * row["rate"])     # rarity 合計 = 1 秒あたりの取得 coin
+        if gained > 0:
+            cur.execute(
+                "UPDATE users SET coins = coins + %s, last_collected_at = NOW() "
+                "WHERE id = %s",
+                (gained, user_id),
+            )</code></pre>
+
+    <!-- ============================================================== -->
+    <h2>9.3 ピックアップガチャ (期間限定 weight)</h2>
+    <p>
+      「今週末は SSR ドラゴンが 3 倍出やすい!」 みたいな仕組み。
+      期間付きの weight オーバーライドテーブルを足すと、 既存の <code>gacha_items</code>
+      を変えずに足せます。
+    </p>
+
+<pre><code class="language-sql">CREATE TABLE pickup_periods (
+    id        BIGSERIAL PRIMARY KEY,
+    gacha_id  BIGINT    NOT NULL REFERENCES gachas(id) ON DELETE CASCADE,
+    period    TSTZRANGE NOT NULL,   -- ← 範囲型 (PG 機能)
+    weights   JSONB     NOT NULL    -- {"10": 6, "11": 6} (character_id → 増加倍率)
+);
+CREATE INDEX idx_pickup_active ON pickup_periods USING GIST (gacha_id, period);</code></pre>
+
+    <p>
+      <code>fetch_pool</code> で <code>NOW() &lt;@ period</code> な行を JOIN して
+      weight を掛け算で適用すると、 既存抽選ロジックは変えずに「期間限定強化」 が実現します。
+      <strong>マスタは過去データを書き換えず、 期間付きで重ねる</strong> のが運用の鉄則。
+    </p>
+
+    <!-- ============================================================== -->
+    <h2>9.4 ランキング / SNS 機能</h2>
     <ul>
-      <li>(本章は将来の自分のためのアウトライン。ここから新しいブランチを切ろう)</li>
+      <li><strong>所持品ランキング</strong>: <code>SELECT user_id, COUNT(*) FROM user_characters GROUP BY user_id ORDER BY 2 DESC LIMIT 50</code></li>
+      <li><strong>レア度別コンプ率ランキング</strong>: 5 ★ をいくつ持っているか</li>
+      <li><strong>フレンド機能</strong>: <code>friendships(user_a, user_b)</code> で多対多を表現</li>
     </ul>
+
+    <p>
+      SNS 系を入れると「他人のデータを参照する」 = アクセス制御の話になります。
+      自分の Box は自分だけが書き換えられて、 他人からは「公開設定の所持数」 だけ見える、 のような切り分けが必要。
+      <strong>「DB 行 vs 認証ユーザー」 のマッピング</strong> をきちんと考える練習になります。
+    </p>
+
+    <!-- ============================================================== -->
+    <h2>9.5 マイグレーション (本番のスキーマ更新)</h2>
+    <p>
+      ここまでスキーマは「最初に <code>schema.sql</code> を 1 回流すだけ」 で済んでいました。
+      でも実運用ではテーブルが後から増えたり、 カラムが増えたりします。 そのときに
+      <strong>本番の既存データを残しながら</strong>スキーマを変える必要が出ます。
+    </p>
+    <ul>
+      <li>素朴な手法: <code>db/migrations/0001_initial.sql</code>, <code>0002_daily_bonus.sql</code> ... と番号順 SQL を増やし、 適用済み番号を <code>schema_migrations</code> テーブルで管理</li>
+      <li>定番ツール: <a href="https://alembic.sqlalchemy.org/" target="_blank">Alembic</a> (SQLAlchemy 系)、 <a href="https://github.com/golang-migrate/migrate" target="_blank">migrate</a> (Go 製、 純 SQL)</li>
+      <li>原則: 「<strong>既存行を壊さない順</strong>で変える」 = 列追加 (default 付き) → アプリ更新 → 列の制約強化、 みたいな段階デプロイ</li>
+    </ul>
+
+    <!-- ============================================================== -->
+    <h2>9.6 監視・ログ・運用</h2>
+    <ul>
+      <li>アクセスログを <code>logging</code> モジュールで構造化 (JSON) して、 sysout/file に</li>
+      <li>遅いクエリの検出: PG の <code>auto_explain</code> 拡張 + <code>log_min_duration_statement</code></li>
+      <li>メトリクス: <code>/api/metrics</code> エンドポイントで Prometheus 互換テキストを返す</li>
+      <li>ヘルスチェック: <code>/api/health</code> は既にあるが、 DB 接続まで含めた readiness を別ルートで</li>
+    </ul>
+
+    <!-- ============================================================== -->
+    <h2>9.7 フロントの本気化</h2>
+    <p>
+      学習モード版フロントは「サーバの素の応答が見える」 のが特徴ですが、 本物のゲームにするなら:
+    </p>
+    <ul>
+      <li>React / Vue / Svelte で組み直し、 状態管理を整理</li>
+      <li>WebSocket か SSE で「他のユーザーがガチャを引いた」 をリアルタイム通知</li>
+      <li>アニメーション (ガチャ演出、 レア確定エフェクト)</li>
+      <li>モバイル対応の見直し</li>
+    </ul>
+
+    <p>
+      ただし<strong>サーバ側の API 仕様は変えない</strong> ことが大事。 現在の <code>web/</code> も、
+      新しいフロントも、 同じ <code>/api/*</code> を叩くだけで動く = API がきちんと「契約」 として機能している証。
+    </p>
+
+    <!-- ============================================================== -->
+    <h2>9.8 学習の旅の終わり、 そして始まり</h2>
+
+    <p>
+      ここまで通った君は、 もう 「Web バックエンド + RDB がどう動いているか」 をフレームワーク無しで
+      自分の手で組み上げた経験を持っています。
+    </p>
+    <ul>
+      <li>HTTP の中身が見える</li>
+      <li>SQL を直接書ける</li>
+      <li>パスワード/セッションを実装できる</li>
+      <li>並行性 (FOR UPDATE / トランザクション) がわかる</li>
+      <li>テストを 2 種類 (smoke, unit) 書ける</li>
+    </ul>
+
+    <p>
+      この後 Django や FastAPI を触ると、 <strong>「あぁ、 これは ROUTES 辞書を綺麗に書いただけ」</strong>
+      <strong>「これは get_conn() の上に ORM が乗っただけ」</strong>と、 全部透けて見えます。
+      フレームワークを使うかどうか は道具選びの話で、 もう怖くない。
+    </p>
+
+    <p>
+      ガチャを伸ばすも良し、 全く別のサービスに応用するも良し。
+      この教材は完。 でも、 君のサーバはここからが本番です。
+    </p>
 
     <div class="pager">
-      <a class="prev" href="./ch08-session.html"><span class="lbl">前へ</span><span class="ttl">← 第 8 章</span></a>
-      <a class="next" href="./index.html"><span class="lbl">完</span><span class="ttl">→ 目次に戻る</span></a>
+      <a class="prev" href="./ch08-session.html">
+        <span class="lbl">前へ</span>
+        <span class="ttl">← 第 8 章 仕上げ</span>
+      </a>
+      <a class="next" href="./index.html">
+        <span class="lbl">完</span>
+        <span class="ttl">→ 目次に戻る</span>
+      </a>
     </div>
   </main>
 </div>

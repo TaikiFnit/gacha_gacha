@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>第5章 パスワードハッシュとユーザー登録 — gacha_gacha</title>
+<title>第5章 パスワードハッシュとセッション — gacha_gacha</title>
 <link rel="stylesheet" href="./assets/style.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
 </head>
@@ -13,50 +13,502 @@
   <main>
     <div class="meta-bar">
       <span class="badge">Chapter 5</span>
-      <span class="badge draft">骨子のみ</span>
+      <span>所要時間: 90〜120 分</span>
+      <span>形式: 5 スパイラルで認証を完成させる</span>
     </div>
-    <h1>第 5 章 — パスワードハッシュとユーザー登録</h1>
+    <h1>第 5 章 — パスワードハッシュとセッション</h1>
 
     <p>
-      なぜパスワードを平文で保存してはいけないのか、
-      ハッシュとは何か、ソルトと反復は何のためにあるのかを、
-      <span class="file-ref">server/auth.py</span> を題材に解きほぐします。
+      Ch.4 で残した 3 つの大きな抜けをここで全部直します。
+    </p>
+    <ul>
+      <li>❌ パスワードを<strong>平文で DB に保存</strong>している (= 漏洩で全員のパスがバレる)</li>
+      <li>❌ ログインで <strong>name 一致だけ</strong>を見ている (= パスワードを書き間違えても通る)</li>
+      <li>❌ <code>/api/me</code> と <code>/api/logout</code> が<strong>ハードコード</strong>
+          (= 「誰がログインしているか」 をサーバが本当には知らない)</li>
+    </ul>
+
+    <p>5 スパイラルで:</p>
+    <ol>
+      <li>パスワードを <strong>pbkdf2</strong> でハッシュ化して保存</li>
+      <li>ログインで <strong>verify_password</strong> を呼んでパス検証</li>
+      <li><strong>sessions テーブル + Cookie</strong> でセッション発行</li>
+      <li><code>/api/me</code> を Cookie からセッションを引く形に</li>
+      <li><code>/api/logout</code> で セッションを破棄</li>
+    </ol>
+
+    <!-- ============================================================== -->
+    <h2>準備 — sessions テーブルを作る</h2>
+    <p>
+      Ch.2 の playground スキーマに <code>sessions</code> テーブルが無かった人向けに、
+      <strong>追加で 1 テーブルだけ作ります</strong> (既にある人はスキップ可)。
     </p>
 
-    <h2>学習目標</h2>
+    <div class="colab-step">
+      <span class="step-tag">📒 ターミナル (psql)</span>
+<pre><code class="language-sql">-- docker compose exec db psql -U gacha -d gacha
+-- 以下を貼って実行
+CREATE TABLE IF NOT EXISTS sessions (
+    token      TEXT        PRIMARY KEY,
+    user_id    BIGINT      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+\d sessions</code></pre>
+    </div>
+
+    <!-- ============================================================== -->
+    <h2>Spiral 1 — パスワードを pbkdf2 でハッシュ化</h2>
+
+    <p>
+      まずパスワードを平文で保存するのをやめます。 暗号は不要。 必要なのは
+      <strong>「同じパスワードからは同じ値が出るが、 ハッシュ値からは元のパスを逆算できない」</strong>
+      関数 = ハッシュ関数。 ただしただの <code>sha256</code> 1 回では弱い (レインボーテーブル攻撃が現実的)。
+      対策が:
+    </p>
     <ul>
-      <li>ハッシュと暗号の違いを説明できる</li>
-      <li>レインボーテーブル攻撃 / 辞書攻撃に対する「ソルト」「反復回数」の役割が言える</li>
-      <li>PBKDF2 / bcrypt / Argon2 の関係をざっくり説明できる</li>
-      <li><code>hmac.compare_digest</code> でタイミング攻撃に対抗する理由を理解する</li>
+      <li><strong>ソルト</strong>: ユーザーごとにランダムな byte 列を 1 つ作って、 ハッシュに混ぜる</li>
+      <li><strong>反復回数</strong>: 同じハッシュを 200,000 回繰り返して、 ブルートフォースの計算量を増やす</li>
+    </ul>
+    <p>
+      これらを束ねた仕組みが <code>pbkdf2</code>。 Python 標準ライブラリ <code>hashlib</code>
+      に最初から入っています。
+    </p>
+
+    <div class="colab-step">
+      <span class="step-tag">📄 server/auth.py (新規)</span>
+<pre><code class="language-python">"""パスワードハッシュ + セッション (Ch.5 で追加)。"""
+from __future__ import annotations
+import base64
+import hashlib
+import hmac
+import os
+import secrets
+from datetime import datetime, timedelta, timezone
+
+# pbkdf2 のパラメータ
+_ALGO = "sha256"
+_ITER = 200_000
+_SALT_BYTES = 16
+_DK_BYTES = 32
+
+# セッションの有効期間
+SESSION_TTL = timedelta(days=7)
+
+
+# ----- パスワード ----------------------------------------------------------
+def hash_password(password: str) -> str:
+    """パスワードをハッシュ化して、 保存用文字列を返す。
+
+    返り値の形式:  pbkdf2_sha256$<iter>$<salt_b64>$<hash_b64>
+    """
+    salt = os.urandom(_SALT_BYTES)
+    dk = hashlib.pbkdf2_hmac(_ALGO, password.encode("utf-8"),
+                             salt, _ITER, dklen=_DK_BYTES)
+    return "$".join([
+        f"pbkdf2_{_ALGO}",
+        str(_ITER),
+        base64.b64encode(salt).decode(),
+        base64.b64encode(dk).decode(),
+    ])
+
+
+def verify_password(password: str, stored: str) -> bool:
+    """保存された文字列と入力パスを比較。 タイミング攻撃に強い hmac.compare_digest を使う。"""
+    try:
+        algo, iter_s, salt_b64, hash_b64 = stored.split("$")
+    except ValueError:
+        return False
+    if not algo.startswith("pbkdf2_"):
+        return False
+    digest_name = algo.split("_", 1)[1]
+    iters = int(iter_s)
+    salt = base64.b64decode(salt_b64)
+    expected = base64.b64decode(hash_b64)
+    actual = hashlib.pbkdf2_hmac(digest_name, password.encode("utf-8"),
+                                 salt, iters, dklen=len(expected))
+    return hmac.compare_digest(actual, expected)
+
+
+# ----- セッション (後の Spiral 3 で使う) -----------------------------------
+def new_session_token() -> str:
+    """十分に長いランダムトークン (256bit, URL-safe)。"""
+    return secrets.token_urlsafe(32)
+
+
+def session_expiry() -> datetime:
+    return datetime.now(timezone.utc) + SESSION_TTL
+</code></pre>
+    </div>
+
+    <p>動作確認 (ターミナルで):</p>
+
+    <div class="colab-step">
+      <span class="step-tag">📒 ターミナル</span>
+<pre><code class="language-bash">cd ~/gacha_gacha
+python -c "
+import sys; sys.path.insert(0, '.')
+from server.auth import hash_password, verify_password
+h1 = hash_password('hello')
+h2 = hash_password('hello')
+print('h1 :', h1[:60], '...')
+print('h2 :', h2[:60], '...')
+print('h1 == h2 ?', h1 == h2)               # ソルトが違うので False
+print('verify hello :', verify_password('hello', h1))  # True
+print('verify HELLO :', verify_password('HELLO', h1))  # False
+"</code></pre>
+    </div>
+
+    <div class="expected-output">
+      <span class="lbl">✅ 期待される出力</span>
+<pre><code>h1 : pbkdf2_sha256$200000$a/L+8yxRz... ...
+h2 : pbkdf2_sha256$200000$xK7Q9XP+a... ...
+h1 == h2 ? False
+verify hello : True
+verify HELLO : False</code></pre>
+    </div>
+
+    <h3>📝 register ハンドラを書き換え</h3>
+    <p>Ch.4 で平文 INSERT していた所を、 ハッシュ後の文字列で INSERT するだけ。</p>
+
+    <div class="colab-step">
+      <span class="step-tag">📝 my_server.py の register</span>
+<pre><code class="language-python">from server.auth import hash_password   # ← ファイル先頭に追加
+
+@route("POST", "/api/register")
+def register(h):
+    body = h._read_json()
+    name = (body.get("name") or "").strip()
+    password = body.get("password") or ""
+    display_name = (body.get("display_name") or "").strip() or name
+
+    if len(name) < 3 or len(name) > 32:
+        raise bad_request("name は 3〜32 文字")
+    if len(password) < 6:
+        raise bad_request("password は 6 文字以上")
+
+    pass_hash = hash_password(password)   # ← Ch.4 までは平文だった
+
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute("SELECT 1 FROM users WHERE name = %s", (name,))
+        if cur.fetchone():
+            raise bad_request("その name は既に使われています")
+        cur.execute(
+            """
+            INSERT INTO users (name, pass_hash, display_name)
+            VALUES (%s, %s, %s)
+            RETURNING id, name, display_name, coins
+            """,
+            (name, pass_hash, display_name),
+        )
+        user = cur.fetchone()
+    h._json(200, {"user": user})</code></pre>
+    </div>
+
+    <p>
+      サーバ再起動 → フロントから新規登録。 デバッグコンソールは ✓ 緑のまま (shape は変わらない)。
+      でも psql で <code>SELECT name, pass_hash FROM users</code> すると、 もう平文では入っていません。
+    </p>
+
+    <!-- ============================================================== -->
+    <h2>Spiral 2 — login で verify_password を呼ぶ</h2>
+
+    <p>
+      Ch.4 では「name 一致だけ」 で 200 を返していました。 ハッシュ化したので、
+      <strong>SELECT で pass_hash を持ってきて、 入力パスを verify する</strong> 形に。
+    </p>
+
+    <div class="colab-step">
+      <span class="step-tag">📝 my_server.py の login</span>
+<pre><code class="language-python">from server.auth import verify_password   # ← ファイル先頭に追加
+
+@route("POST", "/api/login")
+def login(h):
+    body = h._read_json()
+    name = (body.get("name") or "").strip()
+    password = body.get("password") or ""
+
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, name, pass_hash, display_name, coins FROM users WHERE name = %s",
+            (name,),
+        )
+        user = cur.fetchone()
+    if user is None or not verify_password(password, user["pass_hash"]):
+        raise AppError(401, "name か password が違います")
+    # pass_hash はクライアントに返さないように除く
+    user.pop("pass_hash", None)
+    h._json(200, {"user": user})</code></pre>
+    </div>
+
+    <h3>🧪 動作確認</h3>
+    <ul>
+      <li>Spiral 1 で登録した alice / secret123 でログイン → ✓ 緑、ガチャ画面に</li>
+      <li>alice / WRONG_PASSWORD でログイン → 401、 「❌ 認証が通りませんでした」</li>
+      <li>未登録の bob / なんでも → 401</li>
     </ul>
 
-    <h2>扱うトピック</h2>
+    <div class="callout note">
+      <span class="label">📝 タイミング攻撃って?</span>
+      <code>verify_password</code> は <code>hmac.compare_digest</code> を使っています。 これは
+      「文字列の長さを揃えて、 一致 or 不一致を出すまでに常に同じ時間がかかる」 比較。
+      普通の <code>==</code> は最初の不一致 byte で早期 return するので、 攻撃者が
+      レスポンス時間の差分から「この byte までは合っている」 を探れてしまう、
+      という古典的な微妙攻撃を防ぐためです。
+    </div>
+
+    <!-- ============================================================== -->
+    <h2>Spiral 3 — sessions テーブル + Cookie でセッション発行</h2>
+
+    <p>
+      これが認証の本丸。 ログイン成功時にランダムなトークンを発行して
+      <strong>sessions テーブルに保存</strong>、 同じトークンを <strong>Set-Cookie</strong> で返す。
+      クライアント (= 学習モードフロント) は <code>credentials: "include"</code> で fetch するため、
+      以後のリクエストでは Cookie が自動で付いてきます。
+    </p>
+
+    <h3>セッション操作を 2 関数にまとめる</h3>
+
+    <div class="colab-step">
+      <span class="step-tag">📝 server/auth.py の末尾に追加</span>
+<pre><code class="language-python">def create_session(conn, user_id: int):
+    """sessions テーブルにレコードを作って (token, expires_at) を返す。"""
+    token = new_session_token()
+    expires = session_expiry()
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO sessions (token, user_id, expires_at) VALUES (%s, %s, %s)",
+            (token, user_id, expires),
+        )
+    return token, expires
+
+
+def lookup_session(conn, token: str):
+    """token から user 情報を引く。 期限切れ / 不在は None を返す + 期限切れは自動削除。"""
+    if not token:
+        return None
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT u.id, u.name, u.display_name, u.coins, s.expires_at
+              FROM sessions s
+              JOIN users    u ON u.id = s.user_id
+             WHERE s.token = %s
+            """,
+            (token,),
+        )
+        row = cur.fetchone()
+    if row is None:
+        return None
+    if row["expires_at"] <= datetime.now(timezone.utc):
+        delete_session(conn, token)
+        return None
+    return {k: row[k] for k in ("id", "name", "display_name", "coins")}
+
+
+def delete_session(conn, token: str) -> None:
+    if not token: return
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM sessions WHERE token = %s", (token,))
+</code></pre>
+    </div>
+
+    <h3>my_server.py に Cookie 用ヘルパ + ハンドラ更新</h3>
+    <p>
+      <code>_json</code> メソッドに <code>set_cookie</code> 引数を増やし、
+      Cookie を返せるようにします。 加えて、 リクエストの Cookie を読む <code>_cookie</code>
+      ヘルパも追加。
+    </p>
+
+    <div class="colab-step">
+      <span class="step-tag">📝 my_server.py の上の方</span>
+<pre><code class="language-python">import http.cookies
+from server.auth import (hash_password, verify_password,
+                         create_session, lookup_session, delete_session,
+                         SESSION_TTL)
+
+SESSION_COOKIE = "gg_session"
+
+def _make_session_cookie(token):
+    jar = http.cookies.SimpleCookie()
+    jar[SESSION_COOKIE] = token
+    m = jar[SESSION_COOKIE]
+    m["path"] = "/"
+    m["httponly"] = True
+    m["samesite"] = "Lax"
+    m["max-age"] = int(SESSION_TTL.total_seconds())
+    return jar
+
+def _clear_session_cookie():
+    jar = http.cookies.SimpleCookie()
+    jar[SESSION_COOKIE] = ""
+    m = jar[SESSION_COOKIE]
+    m["path"] = "/"; m["httponly"] = True; m["samesite"] = "Lax"; m["max-age"] = 0
+    return jar</code></pre>
+    </div>
+
+    <p><code>App</code> クラスの <code>_json</code> を Cookie 受け入れ可能に書き換え + Cookie 読み取り追加:</p>
+
+    <div class="colab-step">
+      <span class="step-tag">📝 App クラス内のメソッドを更新</span>
+<pre><code class="language-python">    def _cookie(self, name):
+        raw = self.headers.get("Cookie", "")
+        if not raw: return ""
+        jar = http.cookies.SimpleCookie()
+        jar.load(raw)
+        morsel = jar.get(name)
+        return morsel.value if morsel else ""
+
+    def _json(self, status, obj, set_cookie=None):       # ← set_cookie を追加
+        b = json.dumps(obj, ensure_ascii=False, default=str).encode("utf-8")
+        self.send_response(status); self._cors()
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(b)))
+        if set_cookie is not None:
+            for morsel in set_cookie.values():
+                self.send_header("Set-Cookie", morsel.OutputString())
+        self.end_headers(); self.wfile.write(b)</code></pre>
+    </div>
+
+    <p><code>register</code> と <code>login</code> ハンドラの末尾を、 セッション発行付きに:</p>
+
+    <div class="colab-step">
+      <span class="step-tag">📝 register / login のラスト 1 行を書き換え</span>
+<pre><code class="language-python">@route("POST", "/api/register")
+def register(h):
+    # ... (前と同じ INSERT までやって user を取得) ...
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            # ... INSERT ...
+            user = cur.fetchone()
+        token, _ = create_session(conn, user["id"])     # ← セッション作成
+    h._json(200, {"user": user},
+            set_cookie=_make_session_cookie(token))     # ← Set-Cookie で返す
+
+
+@route("POST", "/api/login")
+def login(h):
+    # ... (前と同じ verify までやって user を取得) ...
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            # ... SELECT ...
+            user = cur.fetchone()
+        if user is None or not verify_password(password, user["pass_hash"]):
+            raise AppError(401, "name か password が違います")
+        user.pop("pass_hash", None)
+        token, _ = create_session(conn, user["id"])     # ← セッション作成
+    h._json(200, {"user": user},
+            set_cookie=_make_session_cookie(token))     # ← Set-Cookie で返す</code></pre>
+    </div>
+
+    <p>
+      サーバ再起動 → フロントから新規登録 / ログイン。 デバッグコンソールに
+      Set-Cookie ヘッダが付いた応答が返っているのが見えます。
+      psql で <code>SELECT * FROM sessions</code> を見ると、 行が増えているはず。
+    </p>
+
+    <!-- ============================================================== -->
+    <h2>Spiral 4 — <code>/api/me</code> を Cookie からセッションを引く形に</h2>
+
+    <p>
+      今までずっとハードコードだった <code>/api/me</code> を、 ようやく本物に。
+      Cookie からトークンを取り出して、 sessions JOIN users で user 情報を返す。
+    </p>
+
+    <div class="colab-step">
+      <span class="step-tag">📝 me ハンドラを書き換え</span>
+<pre><code class="language-python">@route("GET", "/api/me")
+def me(h):
+    token = h._cookie(SESSION_COOKIE)
+    with get_conn() as conn:
+        user = lookup_session(conn, token)
+    if user is None:
+        raise unauthorized()
+    h._json(200, {"user": user})</code></pre>
+    </div>
+
+    <h3>🧪 動作確認 — ここがクライマックス</h3>
     <ol>
-      <li>「もし DB が漏れたら」を考える</li>
-      <li>SHA-256 を 1 回かけるだけでは弱い理由</li>
-      <li>ソルトを 1 ユーザーごとに生成する</li>
-      <li>反復回数 200,000 はなぜ妥当か (= 体感 10〜100ms 程度)</li>
-      <li>保存形式に「アルゴリズムと反復回数」を含めると将来の移行が楽</li>
-      <li>パスワード強度 (長さ・複雑性) の話</li>
+      <li>ブラウザでフロントを開いて「新規登録」 (alice / secret123)。 ガチャ画面に</li>
+      <li><strong>ブラウザを完全に閉じて、 もう一度開く</strong></li>
+      <li>フロントが起動時に <code>GET /api/me</code> を投げる</li>
+      <li>デバッグコンソールに <code>200 ✓ 期待形式</code> が出て、 <strong>そのままガチャ画面が出る</strong></li>
     </ol>
 
-    <h2>参照コード</h2>
+    <p>
+      これが本物のセッション管理。 ブラウザを再起動しても、 サーバを再起動しても (DB は永続)、
+      Cookie を消さない限り「あなたは alice」 と覚え続けてくれます。
+    </p>
+
+    <!-- ============================================================== -->
+    <h2>Spiral 5 — <code>/api/logout</code> でセッション破棄</h2>
+
+    <div class="colab-step">
+      <span class="step-tag">📝 logout ハンドラを書き換え</span>
+<pre><code class="language-python">@route("POST", "/api/logout")
+def logout(h):
+    token = h._cookie(SESSION_COOKIE)
+    with get_conn() as conn:
+        delete_session(conn, token)
+    h._json(200, {"ok": True}, set_cookie=_clear_session_cookie())</code></pre>
+    </div>
+
+    <h3>🧪 動作確認</h3>
     <ul>
-      <li><span class="file-ref">server/auth.py</span> の <code>hash_password / verify_password</code></li>
-      <li><span class="file-ref">server/app.py</span> の <code>POST /api/register</code></li>
+      <li>ガチャ画面で「ログアウト」 ボタン押下 → 登録/ログインフォームに戻る</li>
+      <li>そのままブラウザリロード → 401 が出て登録フォーム維持 (= セッションが消えた)</li>
+      <li>psql で <code>SELECT * FROM sessions</code> → 行が消えている</li>
     </ul>
 
-    <h2>演習の例</h2>
-    <ol>
-      <li>同じパスワードで 2 ユーザー登録 → <code>pass_hash</code> が異なることを確認 (ソルトの効果)</li>
-      <li>反復回数を 1,000 / 200,000 / 1,000,000 と変えて所要時間を計測</li>
-      <li><code>compare_digest</code> を <code>==</code> に変えてみる (動くが、なぜ危険か)</li>
-    </ol>
+    <h2>require_user ヘルパ — 認証が必要なハンドラの共通処理</h2>
+    <p>
+      認証必須のエンドポイントが今後増えます (pull, box)。 共通処理として:
+    </p>
+
+    <div class="colab-step">
+      <span class="step-tag">📝 App クラスに追加</span>
+<pre><code class="language-python">    def require_user(self, conn):
+        """認証必須エンドポイントの先頭で呼ぶ。 未認証なら 401 を投げる。"""
+        token = self._cookie(SESSION_COOKIE)
+        user = lookup_session(conn, token)
+        if user is None:
+            raise unauthorized()
+        return user</code></pre>
+    </div>
+
+    <p>これで Ch.6, Ch.7 で <code>user = h.require_user(conn)</code> 一行で済むようになります。</p>
+
+    <!-- ============================================================== -->
+    <h2>本章のまとめ</h2>
+    <ul>
+      <li>パスワードはハッシュ化。 ソルトで「同じパスでも違う出力」、 反復で「ブルートフォースを遅く」</li>
+      <li>パス比較は <code>hmac.compare_digest</code>。 タイミング攻撃を防ぐ</li>
+      <li>セッションは「ランダムトークンを DB に保存して Cookie で配る」 だけ
+          (= 暗号も JWT も使わずシンプル)</li>
+      <li>Cookie 属性 <code>HttpOnly + SameSite=Lax</code> で XSS / CSRF を緩和</li>
+      <li><code>require_user</code> ヘルパで、 認証必須ハンドラの定型句が 1 行に</li>
+    </ul>
+
+    <div class="callout note">
+      <span class="label">📝 本番で気をつけたいこと</span>
+      <ul>
+        <li>HTTPS 配信時は Cookie に <code>Secure</code> 属性も追加</li>
+        <li>同じユーザーが複数端末からログインしたときの session 数管理</li>
+        <li>定期的に <code>DELETE FROM sessions WHERE expires_at &lt; NOW()</code> で掃除</li>
+        <li>パスワードは Argon2 / bcrypt の方が pbkdf2 より望ましい (今回は標準ライブラリで完結させたかった)</li>
+      </ul>
+    </div>
 
     <div class="pager">
-      <a class="prev" href="./ch04-psycopg.html"><span class="lbl">前へ</span><span class="ttl">← 第 4 章</span></a>
-      <a class="next" href="./ch06-gacha-algorithm.html"><span class="lbl">次へ</span><span class="ttl">第 6 章 重み付き乱択 →</span></a>
+      <a class="prev" href="./ch04-psycopg.html">
+        <span class="lbl">前へ</span>
+        <span class="ttl">← 第 4 章 psycopg で本物の DB に</span>
+      </a>
+      <a class="next" href="./ch06-gacha-algorithm.html">
+        <span class="lbl">次へ</span>
+        <span class="ttl">第 6 章 ガチャ抽選を本実装 →</span>
+      </a>
     </div>
   </main>
 </div>
