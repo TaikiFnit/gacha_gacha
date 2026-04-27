@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>第0章 全体像と学び方 — gacha_gacha</title>
+<title>第0章 全体像と環境構築 — gacha_gacha</title>
 <link rel="stylesheet" href="./assets/style.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
 </head>
@@ -13,15 +13,16 @@
   <main>
     <div class="meta-bar">
       <span class="badge">Chapter 0</span>
-      <span>所要時間: 30〜40 分</span>
-      <span>動かすもの: Google Colab で新規ノートブック</span>
+      <span>所要時間: 60〜90 分</span>
+      <span>動かすもの: 自分の Windows PC (Python + Docker Desktop + Bruno)</span>
     </div>
-    <h1>第 0 章 — 全体像と学び方</h1>
+    <h1>第 0 章 — 全体像と環境構築</h1>
 
     <p>
-      最初に、この教材で何をやるのか、なぜやるのか、どう進めるのか、という
-      <em>地図</em> を渡しておきます。地図がなければ、いきなり川に流されている
-      気分になりやすいので。
+      この教材は<strong>自分の手元の Windows PC でバックエンドを組み立てる</strong>形式で進みます。
+      まずは、 何を作るのか、 どう進めるのか、 そして<strong>道具を揃える</strong>ところまでを片付けます。
+      0 章だけは少し時間がかかりますが、 ここを通過してしまえば、 1 章以降はずっと
+      「コードを書く → 動かす → 試す」 のサイクルだけで進めます。
     </p>
 
     <h2>0.1 なぜガチャシステムなのか</h2>
@@ -29,7 +30,7 @@
       バックエンドとデータベースの教材は世の中にたくさんあります。
       が、典型的な「メモアプリを作る」「ブログを作る」だと、
       テーブルが 1〜2 個で済んでしまい、<strong>リレーション (関係) を扱う面白さ</strong>
-      が出てきません。ガチャは違います。
+      が出てきません。 ガチャは違います。
     </p>
     <ul>
       <li><strong>ユーザー</strong>がいる (= 認証・所有という概念)</li>
@@ -40,8 +41,8 @@
     </ul>
     <p>
       <em>「複数のテーブルを正しく組み合わせて答えを返す」</em>
-      という、データベースの本領が試される題材です。しかも、
-      重み付き乱択や集計など、ロジックも一癖あります。
+      という、 データベースの本領が試される題材です。 しかも、
+      重み付き乱択や集計など、 ロジックも一癖あります。
     </p>
 
     <h2>0.2 まず Web の世界の登場人物を整理</h2>
@@ -81,6 +82,9 @@
         <tr><td><strong>データベース (DB)</strong></td>
             <td>データを永続的に保存する仕組み</td>
             <td>Ch.2 で詳しくやる</td></tr>
+        <tr><td><strong>Docker</strong></td>
+            <td>「アプリと、 アプリが動くために必要なもの一式」 を箱詰めにして、 同じように動かせる仕組み</td>
+            <td>本教材では PostgreSQL を Docker で起動する</td></tr>
       </tbody>
     </table>
 
@@ -92,24 +96,23 @@
 
     <h2>0.3 何を作るのか</h2>
     <p>
-      ブラウザで動く、ものすごく素朴なガチャゲームです。
-      ログインして、コインを払ってガチャを引き、結果が Box に積まれていく。
+      ブラウザで動く、 ものすごく素朴なガチャゲームです。
+      ログインして、 コインを払ってガチャを引き、 結果が Box に積まれていく。
       これを <strong>フレームワークなし</strong> で実装します。
       具体的にはこの 3 つだけ:
     </p>
     <ul>
       <li>Python 標準ライブラリ <code>http.server</code> (HTTP サーバー)</li>
-      <li>Python 標準ライブラリ <code>sqlite3</code> (DB)。 学習中はこれだけで十分。
-          仕上げの章で本番想定の PostgreSQL に切り替える</li>
+      <li>PostgreSQL (Docker コンテナ) + <code>psycopg</code> (Python から DB を叩くライブラリ)</li>
       <li>素の HTML/CSS/JS (フロント。 既製品を提供します)</li>
     </ul>
 
     <div class="callout note">
       <span class="label">📝 補足</span>
       実務では Django / FastAPI / Spring Boot のようなフレームワークを使います。
-      でも、いきなりフレームワークから入ると「何が魔法で、何がプロトコルの規定なのか」
+      でも、 いきなりフレームワークから入ると「何が魔法で、 何がプロトコルの規定なのか」
       が混ざってわからなくなります。<strong>素手で 1 度組んでおく</strong>
-      と、フレームワークが何を肩代わりしているかが透けて見えるようになります。
+      と、 フレームワークが何を肩代わりしているかが透けて見えるようになります。
     </div>
 
     <h2>0.4 全体アーキテクチャ</h2>
@@ -143,7 +146,7 @@
 
         <rect class="box" x="280" y="60" width="200" height="200"/>
         <text class="lbl" x="380" y="100">API サーバー</text>
-        <text class="sub" x="380" y="120">(Python プロセス)</text>
+        <text class="sub" x="380" y="120">(Python プロセス, localhost:8000)</text>
         <text class="src" x="380" y="150">server/app.py (http.server)</text>
         <text class="src" x="380" y="170">server/auth.py</text>
         <text class="src" x="380" y="190">server/gacha.py</text>
@@ -152,7 +155,7 @@
 
         <rect class="box" x="540" y="60" width="200" height="200"/>
         <text class="lbl" x="640" y="100">PostgreSQL</text>
-        <text class="sub" x="640" y="120">(Docker コンテナ)</text>
+        <text class="sub" x="640" y="120">(Docker コンテナ, localhost:5432)</text>
         <text class="src" x="640" y="160">db/schema.sql</text>
         <text class="src" x="640" y="180">db/seed.sql</text>
         <text class="layer" x="640" y="240">役: テーブル/制約/トランザクション</text>
@@ -167,25 +170,27 @@
         <path class="arr" d="M540,180 L480,180"/>
         <text class="arr-lbl" x="510" y="200" text-anchor="middle">rows</text>
       </svg>
-      <figcaption>各コンポーネントが「どのファイル」に対応するかも添えてあります。</figcaption>
+      <figcaption>各コンポーネントが「どのファイル」 「どのプロセス」 に対応するかを添えています。 全部あなたの手元の PC で動きます。</figcaption>
     </figure>
 
     <h2>0.5 章マップ</h2>
     <p>
-      章を縦に積み重ねるイメージです。 土台 (HTTP / DB) → 連結  → フロントを繋ぐ → 機能を 1 つずつ
-      拡張する (認証 / 抽選 / Box) → 仕上げ (本番想定 + テスト) → 拡張、 という流れ。
+      章を縦に積み重ねるイメージです。 環境を整え (Ch.0) → HTTP の素手実装 (Ch.1) → DB の素手実装 (Ch.2) →
+      Python から DB を触る (Ch.3) → ブラウザのフロントを繋ぐ (Ch.4) → 機能を 1 つずつ実装 (Ch.5〜7) →
+      仕上げ (Ch.8) → 拡張 (Ch.9)、 という流れ。
     </p>
     <table>
       <thead><tr><th>章</th><th>テーマ</th><th>キーになる概念</th></tr></thead>
       <tbody>
+        <tr><td>0</td><td>全体像と環境構築</td><td>Python / Docker Desktop / Bruno のセットアップ</td></tr>
         <tr><td>1</td><td>HTTP サーバー</td><td>HTTPメソッド / ステータスコード / ヘッダ / 本文</td></tr>
-        <tr><td>2</td><td>DB の基礎</td><td>リレーション / 主キー / 制約 / SQL 基本</td></tr>
-        <tr><td>3</td><td>サーバとデータベースをつないでみる</td><td>REST クライアント、 Colab 公開URL、 INSERT/SELECT</td></tr>
+        <tr><td>2</td><td>DB の基礎 (Postgres + Docker)</td><td>リレーション / 主キー / 制約 / SQL 基本 / psql</td></tr>
+        <tr><td>3</td><td>Python から DB を叩く</td><td>psycopg、 INSERT/SELECT、 Bearer Token なしのハードコード API</td></tr>
         <tr><td>4</td><td>フロントを足す</td><td>ブラウザで開く、 CORS、 学習モードフロント</td></tr>
         <tr><td>5</td><td>ガチャ抽選を本実装</td><td>重み付き乱択 / トランザクション / SQL インジェクション対策</td></tr>
         <tr><td>6</td><td>Box の集計</td><td>JOIN / GROUP BY / 集計関数</td></tr>
         <tr><td>7</td><td>ユーザー管理を導入</td><td>パスワードハッシュ / Bearer Token / 個別 Box の実現</td></tr>
-        <tr><td>8</td><td>本番想定への仕上げ</td><td>ローカル移行、 PostgreSQL / Docker、 ファイル分割、 自動テスト</td></tr>
+        <tr><td>8</td><td>仕上げ + 自動テスト</td><td>ファイル分割 / .env / smoke / 自動テスト</td></tr>
         <tr><td>9</td><td>拡張アイディア</td><td>ログインボーナス、 アイドル風生成、 ピックアップ、 ランキング</td></tr>
       </tbody>
     </table>
@@ -197,12 +202,12 @@
       形を採用しています。 写経や丸ごとコピペではなく、 「前に自分が書いたコード」 を起点に
       機能を 1 つずつ足していくので、 出来上がったときに 「自分で組み立てた」 感覚が残ります。
     </p>
-    <p>章ごとに、次の流れを繰り返します:</p>
+    <p>章ごとに、 次の流れを繰り返します:</p>
     <ol>
-      <li><strong>動かす</strong> — 各ステップのコードを Colab セルにコピペして Shift+Enter</li>
+      <li><strong>動かす</strong> — 各ステップのコードをエディタにコピペして保存 → ターミナルで実行</li>
       <li><strong>確認する</strong> — 期待される出力と一致するか見る</li>
-      <li><strong>壊す</strong> — 1 か所だけ書き換えて、出力がどう変わるか見る (= 仕組みの理解確認)</li>
-      <li><strong>拡張する</strong> — 次のステップで前のコードに機能を 1 つ足す。前にできていたことは引き続き動くか確認</li>
+      <li><strong>壊す</strong> — 1 か所だけ書き換えて、 出力がどう変わるか見る (= 仕組みの理解確認)</li>
+      <li><strong>拡張する</strong> — 次のステップで前のコードに機能を 1 つ足す。 前にできていたことは引き続き動くか確認</li>
     </ol>
     <p>
       一気に全部書いて最後にまとめてテスト、 ではなく、
@@ -211,80 +216,294 @@
       ほぼ同じ形に到達します。
     </p>
     <p>
-      迷ったり詰まったりしたときは、リポジトリ直下の完成版コードを <strong>「同じ道を最後まで歩いた人の足跡」</strong>
-      として参照してください。 あなたのコードを否定する正解ではなく、進む方向を示す地図として役立ちます。
+      迷ったり詰まったりしたときは、 リポジトリ直下の完成版コードを <strong>「同じ道を最後まで歩いた人の足跡」</strong>
+      として参照してください。 あなたのコードを否定する正解ではなく、 進む方向を示す地図として役立ちます。
     </p>
 
-    <h2>0.7 Colab を開いて作業環境を作る</h2>
+    <!-- ============================================================== -->
+    <h2>0.7 環境構築 — Windows ローカル前提</h2>
     <p>
-      この教材は <strong>Google Colab</strong> 前提で作ってあります。
-      ブラウザだけあれば良く、Python も SQLite も最初から入っています。
-      (本格運用のローカル/Docker版は最後の章で扱います)
+      ここからは実際に手を動かします。 必要な道具は 4 つだけ:
+    </p>
+    <ol>
+      <li><strong>Python 3.11 以降</strong> — 教材本体を書く言語</li>
+      <li><strong>Docker Desktop</strong> — Ch.2 から PostgreSQL を起動するのに使う</li>
+      <li><strong>Bruno</strong> — REST API を叩いて応答を確認するクライアント (Ch.1 から)</li>
+      <li><strong>VS Code</strong> (任意だが強く推奨) — エディタ</li>
+    </ol>
+    <p>
+      順に入れていきます。 すべて<strong>個人利用なら無料</strong>です。
     </p>
 
-    <ol>
-      <li><a href="https://colab.research.google.com/" target="_blank">Google Colab</a> をブラウザで開く</li>
-      <li>「ファイル」→「ノートブックを新規作成」 (もしくは中央の「+ 新規ノートブック」)</li>
-      <li>左上のファイル名を <code>gacha_gacha.ipynb</code> 等に変更しておく</li>
-    </ol>
+    <h3>0.7.1 Python をインストール</h3>
+    <p>
+      <a href="https://www.python.org/downloads/windows/" target="_blank">python.org の Windows 版ダウンロードページ</a>
+      から、 最新の安定版 (本教材執筆時点では 3.12 系) の<strong>「Windows installer (64-bit)」</strong> を
+      ダウンロードしてください。
+    </p>
+
+    <div class="callout warn">
+      <span class="label">⚠️ 必ずチェック: 「Add python.exe to PATH」</span>
+      インストーラの最初の画面で、 一番下にある <strong>「Add python.exe to PATH」</strong> のチェックボックスを
+      <strong>必ずオンにしてから</strong>「Install Now」 を押してください。 これを忘れると、 PowerShell から
+      <code>python</code> コマンドが直接打てなくなり、 後で全部の手順がうまくいきません。
+      もし忘れた場合は、 一度アンインストールしてやり直すのが楽です。
+    </div>
+
+    <h3>0.7.2 PowerShell で Python が動くか確認</h3>
+    <p>
+      Windows のスタートメニューから「PowerShell」 を起動してください
+      (「Windows PowerShell」 でも 「PowerShell 7」 でもどちらでも OK)。
+      下のコマンドを 1 つずつ打ってみます。
+    </p>
 
     <div class="colab-step">
-      <span class="step-tag">📒 セル 1</span>
-      最初のセルに以下をコピペして <kbd>Shift + Enter</kbd> で実行してください。
-      作業フォルダができ、以降のセルから相対パスで使えるようになります。
-<pre><code class="language-python">import os, pathlib, sys
+      <span class="step-tag">📒 確認 1 — Python のバージョンを見る</span>
+<pre><code class="language-powershell"># Python のバージョンを表示
+python --version
 
-# Colab なら /content の下、ローカルなら現在地の下に作業フォルダを切る
-if pathlib.Path("/content").exists():
-    ROOT = pathlib.Path("/content/gacha_gacha")
-else:
-    ROOT = pathlib.Path.cwd() / "gacha_gacha_workspace"
-ROOT.mkdir(exist_ok=True, parents=True)
+# どこにインストールされたか表示
+python -c "import sys; print(sys.executable)"</code></pre>
+    </div>
 
-for sub in ["db", "server", "web", "exercises/ch01", "exercises/ch02"]:
-    (ROOT / sub).mkdir(exist_ok=True, parents=True)
+    <div class="expected-output">
+      <span class="lbl">✅ 期待される出力 (バージョン番号は環境による)</span>
+<pre><code>Python 3.12.3
+C:\Users\<あなたの名前>\AppData\Local\Programs\Python\Python312\python.exe</code></pre>
+    </div>
 
-os.chdir(ROOT)
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+    <p>
+      もし <code>python : 用語 'python' は、 ...</code> のようなエラーが出たら、 PATH 設定を忘れています。
+      0.7.1 の警告に戻ってインストールし直してください。
+    </p>
 
-print("✅ 作業ディレクトリ:", ROOT)
-print("   中身:", sorted(p.name for p in ROOT.iterdir()))</code></pre>
+    <details>
+      <summary>📚 コラム: <code>python</code> と <code>py</code> の違い</summary>
+      <p>
+        Windows には <code>py</code> という Python ランチャーが標準で入る場合があります。
+        本教材では一貫して <code>python</code> を使います。 もし環境によって <code>python</code>
+        が動かず <code>py</code> なら動く場合は、 すべての <code>python</code> を <code>py</code>
+        に読み替えてください。
+      </p>
+    </details>
+
+    <h3>0.7.3 ターミナルで Python をちょっと触ってみる</h3>
+    <p>
+      環境変数 PATH を通したかどうかは、 上の <code>python --version</code> で確かめました。
+      せっかくなので、 数行だけ<strong>対話モード</strong>で動かしてみます。
+    </p>
+
+    <div class="colab-step">
+      <span class="step-tag">📒 確認 2 — 対話モードで Python に話しかける</span>
+<pre><code class="language-powershell"># Python の対話モード (REPL) に入る
+python
+
+# 以下、 >>> プロンプトで入力していく
+>>> 1 + 1
+2
+>>> "hello, " + "Python"
+'hello, Python'
+>>> for i in range(3):
+...     print(i, "ガチャ")
+...
+0 ガチャ
+1 ガチャ
+2 ガチャ
+>>> exit()</code></pre>
+    </div>
+
+    <p>
+      <code>>>></code> が出ているときは Python が「次の命令を待っている」 状態です。
+      <code>exit()</code> で抜けて PowerShell に戻ります。
+    </p>
+
+    <div class="callout note">
+      <span class="label">📝 ループは 4 スペース字下げ</span>
+      <code>for i in range(3):</code> の次の行は<strong>必ず 4 スペース下げて</strong>から
+      <code>print</code> を打ってください。 Python では字下げで「ブロック」 を表現します
+      (Java の <code>{ }</code> や C 系の波括弧の代わり)。
+      対話モードでは、 字下げが必要な行は <code>...</code> プロンプトに変わります。
+      ブロックを終わるには空行で Enter を押します。
+    </div>
+
+    <h3>0.7.4 作業用フォルダを作る + Python ファイルを動かす</h3>
+    <p>
+      ガチャ教材で書くコードを置く場所を作ります。 PowerShell で実行してください。
+    </p>
+
+    <div class="colab-step">
+      <span class="step-tag">📒 確認 3 — 作業フォルダを作って移動</span>
+<pre><code class="language-powershell"># ホームディレクトリ (= C:\Users\&lt;あなたの名前&gt;) の下に gacha_workspace を作る
+mkdir $HOME\gacha_workspace
+cd    $HOME\gacha_workspace
+
+# 今いる場所を表示
+pwd
+
+# このフォルダの中身 (空のはず)
+ls</code></pre>
+    </div>
+
+    <p>
+      次に、 簡単な Python スクリプトを<strong>ファイルとして</strong>書いて、 ファイル経由で実行してみます。
+      対話モードと違って、 ファイルに書いたコードは何度でも再実行できます。
+    </p>
+
+    <div class="colab-step">
+      <span class="step-tag">📒 確認 4 — hello.py を作って動かす</span>
+<pre><code class="language-powershell"># hello.py を作る (PowerShell の 'Set-Content' でファイル作成)
+@"
+# hello.py
+print('Hello, Python!')
+print(2 ** 10, '回ガチャを引いた気分')
+"@ | Set-Content -Encoding utf8 hello.py
+
+# 実行
+python hello.py</code></pre>
     </div>
 
     <div class="expected-output">
       <span class="lbl">✅ 期待される出力</span>
-<pre><code>✅ 作業ディレクトリ: /content/gacha_gacha
-   中身: ['db', 'exercises', 'server', 'web']</code></pre>
+<pre><code>Hello, Python!
+1024 回ガチャを引いた気分</code></pre>
     </div>
 
     <p>
-      これで「Colab というキャンバスに、自分の作業場を 1 区画切った」状態になりました。
-      第1章からは各章の指示通りに <strong>新しいセルを追加してコピペ → Shift+Enter</strong>
-      を繰り返すだけで、最終的にガチャゲームが Colab 内で動く所まで進みます。
+      上の <code>@"..."@</code> はヒアドキュメント記法で、 PowerShell で複数行を 1 ファイルにまとめて
+      書き出すときに便利です。 普段は VS Code などのエディタで <code>hello.py</code> を開いて編集します
+      (後述)。
     </p>
 
-    <div class="callout note">
-      <span class="label">📝 Colab の Tips</span>
+    <h3>0.7.5 VS Code を入れる (任意だが強く推奨)</h3>
+    <p>
+      <a href="https://code.visualstudio.com/Download" target="_blank">VS Code 公式</a>
+      から Windows 版をダウンロード → インストール。 推奨拡張は次の 2 つだけ:
+    </p>
+    <ul>
+      <li><strong>Python</strong> (Microsoft 公式) — 構文ハイライト、 補完、 デバッグ</li>
+      <li><strong>SQLTools</strong> + <strong>SQLTools PostgreSQL/Cockroach Driver</strong> — Ch.2 で DB を覗くのに便利 (DBeaver や pgAdmin が好みなら不要)</li>
+    </ul>
+    <p>
+      VS Code の右下に表示される改行コードは <strong>LF</strong> に統一しておくのがおすすめです
+      (リポジトリ直下の <code>.gitattributes</code> で自動的にそうなりますが、 既存ファイルを
+      開いて見るときの安心材料)。
+    </p>
+
+    <h3>0.7.6 Docker Desktop を入れる</h3>
+    <p>
+      Ch.2 から PostgreSQL を Docker コンテナで起動します。
+      <a href="https://www.docker.com/products/docker-desktop/" target="_blank">Docker Desktop 公式</a>
+      から Windows 版 (AMD64 もしくは ARM64) をダウンロードしてインストールしてください。
+    </p>
+
+    <div class="callout warn">
+      <span class="label">⚠️ Docker Desktop の前提</span>
       <ul>
-        <li>新しいセル: メニューの「+ コード」、または最後のセルの下にカーソルを置いて <kbd>Ctrl/Cmd + M, B</kbd></li>
-        <li>セル実行: <kbd>Shift + Enter</kbd> (実行 + 次に進む) / <kbd>Ctrl/Cmd + Enter</kbd> (実行のみ)</li>
-        <li>シェルコマンドは行頭に <code>!</code> を付ける (例: <code>!ls -la</code>)</li>
-        <li>セッションが切れた = もう一度<strong>上から</strong>セルを実行し直せばOK</li>
+        <li>Windows 10 以降 (Pro / Home どちらでも OK)</li>
+        <li>WSL 2 が有効になっていること (インストーラが自動でセットアップを促してくれます。 「Use the WSL 2 based engine」 がデフォルト)</li>
+        <li>会社 PC で管理者権限が必要な操作が起きるので、 自由にインストールできない環境では事前に IT 部門と相談してください</li>
       </ul>
     </div>
 
+    <p>
+      インストールが終わったら、 一度 PC を再起動してから Docker Desktop を起動します。
+      タスクトレイに <strong>クジラのアイコン</strong>が出て、 「Engine running」 と表示されれば準備完了。
+    </p>
+
+    <div class="colab-step">
+      <span class="step-tag">📒 確認 5 — PowerShell から docker が見えるか</span>
+<pre><code class="language-powershell"># Docker のバージョン
+docker --version
+docker compose version
+
+# 動いているコンテナ一覧 (まだ何もないので空)
+docker ps</code></pre>
+    </div>
+
+    <div class="expected-output">
+      <span class="lbl">✅ 期待される出力 (バージョンは環境による)</span>
+<pre><code>Docker version 27.3.1, build ce12230
+Docker Compose version v2.30.3-desktop.1
+CONTAINER ID   IMAGE   COMMAND   CREATED   STATUS   PORTS   NAMES</code></pre>
+    </div>
+
+    <p>
+      もし <code>docker : 用語 'docker' は ...</code> となれば、 Docker Desktop がまだ起動していない、 または
+      PowerShell を Docker Desktop インストール前に開いたセッションのままです。 PowerShell を一度閉じて
+      開き直してください。
+    </p>
+
+    <h3>0.7.7 Bruno (REST クライアント) を入れる</h3>
+    <p>
+      Ch.1 で HTTP サーバを動かしたら、 ブラウザの URL バー以外からも叩いてみたくなります。
+      そのときに使う API クライアントが <strong>Bruno</strong> です。 軽量、 オープンソース、
+      アカウント不要、 設定ファイルがプレーンテキストで git に commit できる、 と教材に向いています。
+    </p>
+    <p>
+      <a href="https://www.usebruno.com/downloads" target="_blank">Bruno 公式</a> から Windows 版を
+      ダウンロード → インストール。 起動して空のウィンドウが開けば OK です。 使い方は Ch.1 で扱います。
+    </p>
+
+    <details>
+      <summary>📚 コラム: なぜ curl ではなく Bruno?</summary>
+      <p>
+        本教材でも <code>curl</code> はよく使います。 ただ、 ヘッダや body を組み立てたり、 何度も呼び直したり、
+        request を保存しておきたい場面では GUI クライアントの方が圧倒的に楽です。
+        Bruno を選んでいるのは:
+      </p>
+      <ul>
+        <li>OSS でアカウント登録不要 (Postman は無料でもアカウント要)</li>
+        <li>request 定義が <code>.bru</code> という<strong>プレーンテキストファイル</strong> なので、
+            学習プロジェクトを git に commit してそのまま共有できる</li>
+        <li>動作が軽い</li>
+      </ul>
+      <p>
+        Postman / Hoppscotch デスクトップ / VS Code の REST Client 拡張など、 既に使い慣れたものがあれば
+        それで構いません。 本教材の手順では Bruno を前提に書いてあるだけです。
+      </p>
+    </details>
+
+    <h3>0.7.8 Git (任意) — 完成版コードを答え合わせに使うなら</h3>
+    <p>
+      この教材のリポジトリ <code>gacha_gacha</code> をローカルに clone しておくと、
+      自分で組み立てた途中で「完成版はどう書いているのか」 を簡単に比べられて便利です。
+      <a href="https://git-scm.com/download/win" target="_blank">Git for Windows</a> をインストールしてから:
+    </p>
+
+    <div class="colab-step">
+      <span class="step-tag">📒 確認 6 — 教材リポジトリを clone</span>
+<pre><code class="language-powershell">cd $HOME
+git clone https://github.com/taikifnit/gacha_gacha.git
+cd gacha_gacha
+ls</code></pre>
+    </div>
+
+    <p>
+      作業用の <code>$HOME\gacha_workspace</code> とは別に <code>$HOME\gacha_gacha</code> ができます。
+      自分のコードは <code>gacha_workspace</code>、 教材ソースは <code>gacha_gacha</code>、 と分けて使います。
+    </p>
+
     <h2>0.8 困ったとき</h2>
     <ul>
-      <li>セルが赤くエラー → エラーメッセージの<strong>最後の 1 行</strong>を読む。
-          Python のエラーは大抵、最後の行に「何が」「どこで」起きたかが書いてある</li>
-      <li>「ImportError: No module named ...」 → セル 1 (環境セットアップ) を再実行</li>
-      <li>「Address already in use」 → 同じポートを使うサーバーが既に起動している。
-          ランタイムを「再起動」するか、別ポートを使う</li>
-      <li>「もう全部わからない」 → <strong>章を 1 つ戻す</strong>。
-          下の層の理解が足りていないことが多いです</li>
-      <li>ランタイム切断 → 上から<strong>もう一度セルを順に実行</strong>。 状態は揮発するので諦めて再実行が早い</li>
+      <li><strong>「python が認識されない」</strong> → PATH 設定を忘れている。 0.7.1 の警告参照。 アンインストール → 再インストールが早い</li>
+      <li><strong>「docker が認識されない」</strong> → Docker Desktop を起動した状態で、 PowerShell を<strong>開き直す</strong>。 起動中なのにダメなら一度 PC を再起動</li>
+      <li><strong>「Address already in use」 (ポート 8000 / 5432 などが使われている)</strong> →
+          <code>Get-NetTCPConnection -LocalPort 8000</code> で何が掴んでいるか確認。 不要なプロセスは
+          <code>Stop-Process -Id &lt;PID&gt;</code> で止める</li>
+      <li><strong>PowerShell でスクリプトを実行できない (「実行ポリシー」 エラー)</strong> →
+          <code>Set-ExecutionPolicy -Scope CurrentUser RemoteSigned</code> を 1 度実行</li>
+      <li><strong>「もう全部わからない」</strong> → <strong>章を 1 つ戻す</strong>。 下の層の理解が足りていないことが多いです</li>
     </ul>
+
+    <div class="callout tip">
+      <span class="label">💡 ここまでで不安があれば</span>
+      <ul>
+        <li><code>python --version</code> でバージョン番号が出る</li>
+        <li><code>docker ps</code> で表が表示される (中身は空 OK)</li>
+        <li>Bruno が起動して、 ウィンドウが開く</li>
+      </ul>
+      <p>この 3 つが揃ったら、 第 1 章へ進む準備は万全です。</p>
+    </div>
 
     <div class="pager">
       <a class="prev" href="./index.html">

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>第8章 ローカル移行 + 仕上げ — gacha_gacha</title>
+<title>第8章 仕上げ + 自動テスト — gacha_gacha</title>
 <link rel="stylesheet" href="./assets/style.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
 </head>
@@ -13,220 +13,160 @@
   <main>
     <div class="meta-bar">
       <span class="badge">Chapter 8</span>
-      <span>所要時間: 2〜3 時間</span>
-      <span>形式: ローカル PC で本番想定環境を組む</span>
+      <span>所要時間: 90〜120 分</span>
+      <span>形式: myserver.py を分割 + テストを足す</span>
     </div>
-    <h1>第 8 章 — ローカル移行 + 仕上げ</h1>
+    <h1>第 8 章 — 仕上げ + 自動テスト</h1>
 
     <p>
-      Ch.1〜8 で「動くガチャシステム」 が手元の Colab で完成しました。 ここで Colab を卒業し、
-      <strong>本番想定の環境</strong> (PostgreSQL + Docker + 分割されたファイル + 自動テスト) に
-      ステップアップします。
+      Ch.1〜7 で <strong>動くガチャシステム</strong>が手元に揃いました。 でも <code>myserver.py</code> 1 ファイルに
+      何百行も詰まっていて、 ファイル分割や設定の外出し、 何より「変更したら全機能が壊れていないか」 を
+      一発確認する手段がない状態です。 本章で<strong>運用しやすい形に整理</strong>します。
     </p>
 
-    <p>4 つの仕上げ:</p>
+    <p>3 つの仕上げ:</p>
     <ol>
-      <li>Colab の Notebook を <strong>.py / .sql に書き出して</strong>ローカルへ持ち帰る</li>
-      <li><strong>PostgreSQL を Docker で起動</strong>し、 sqlite3 → psycopg に置き換え</li>
-      <li>大きくなった <code>my_server.py</code> を <strong>役割ごとに分割</strong></li>
+      <li>大きくなった myserver.py を<strong>役割ごとに <code>server/</code> パッケージへ分割</strong></li>
+      <li>DB 接続情報を <code>.env</code> に外出し</li>
       <li>動作を機械化する <strong>smoke テスト</strong> + <strong>ユニットテスト</strong></li>
     </ol>
 
     <div class="callout note">
-      <span class="label">📝 必要なもの</span>
+      <span class="label">📝 前提</span>
       <ul>
-        <li>Python 3.10 以上</li>
-        <li>Docker Desktop (Mac/Windows) もしくは Docker Engine + Compose</li>
-        <li>テキストエディタ (VS Code 推奨)</li>
-        <li>ターミナル (Windows は WSL2 推奨)</li>
+        <li>Ch.0〜7 を完走していること</li>
+        <li>作業フォルダ (<code>$HOME\gacha_workspace</code>) に myserver.py / web/ / db/ / docker-compose.yml が揃っている</li>
+        <li>venv が有効化された PowerShell から作業</li>
       </ul>
     </div>
 
-    <h2>8.1 Colab を卒業 — Notebook を持ち帰る</h2>
-
+    <!-- =============================================================== -->
+    <h2>8.1 myserver.py をパッケージに分割</h2>
     <p>
-      Colab メニュー <strong>「ファイル」 → 「ダウンロード」 → 「.ipynb をダウンロード」</strong>
-      で全セルが手元に落ちてきます。 ここから必要なコードを <code>.py</code> ファイルにコピーします。
+      myserver.py は今や数百行になっているはず。 これを役割ごとに分割します。
+      ここからの作業は<strong>リポジトリの <code>server/</code> 配下と同じ構成</strong>を目指します:
     </p>
 
-    <p>ローカルに作業フォルダを作る:</p>
+<pre><code>$HOME\gacha_workspace\
+├── server\
+│   ├── __init__.py        ← 空ファイル (これがあると "パッケージ" 扱いになる)
+│   ├── app.py             ← HTTP サーバ + ルート定義
+│   ├── db.py              ← psycopg 接続ヘルパ
+│   ├── auth.py            ← パスワードハッシュ + セッション
+│   └── gacha.py           ← 重み付き乱択
+├── web\                   ← Ch.4 でコピー済み
+├── db\                    ← Ch.2 で作成
+├── docker-compose.yml     ← Ch.2 で作成
+└── tests\                 ← この章で追加</code></pre>
 
-<pre><code class="language-bash">mkdir -p ~/gacha_gacha/{db,server,web,tests}
-cd ~/gacha_gacha</code></pre>
-
-    <p>
-      <code>web/</code> は Ch.4 で既にダウンロード済みのフロント 3 ファイル
-      (<code>index.html</code> / <code>app.js</code> / <code>style.css</code>) を移動。
-    </p>
-
-    <h3>Python 仮想環境を作る</h3>
-<pre><code class="language-bash">python -m venv .venv
-source .venv/bin/activate          # Windows は .venv\Scripts\activate
-python -m pip install --upgrade pip</code></pre>
-
-    <details>
-      <summary>📚 コラム: 仮想環境って?</summary>
-      <p>
-        Python は<strong>プロジェクトごとに独立したパッケージセット</strong>を持つのが定番。
-        <code>python -m venv .venv</code> でこのプロジェクト専用の Python 環境ができ、
-        <code>source .venv/bin/activate</code> で「以後の <code>pip install</code> はそこに入れてね」 と OS に伝える。
-      </p>
-      <p>
-        これをやらないと、 <code>pip install</code> がシステム全体の Python に影響して、 別プロジェクトとバージョン衝突したりする。
-        1 プロジェクト = 1 仮想環境 がお作法。
-      </p>
-    </details>
-
-    <h2>8.2 Postgres を Docker で起動</h2>
+    <h3>分割の方針</h3>
+    <table>
+      <thead><tr><th>新ファイル</th><th>移すもの</th></tr></thead>
+      <tbody>
+        <tr><td><code>server/db.py</code></td>
+            <td>DB_PARAMS, get_conn, healthcheck</td></tr>
+        <tr><td><code>server/auth.py</code></td>
+            <td>hash_password, verify_password, create_session, lookup_session, delete_session</td></tr>
+        <tr><td><code>server/gacha.py</code></td>
+            <td>GachaItem dataclass, fetch_pool, draw</td></tr>
+        <tr><td><code>server/app.py</code></td>
+            <td>その他全部 (App クラス、 ROUTES、 ハンドラ群)</td></tr>
+      </tbody>
+    </table>
 
     <p>
-      ローカル PC に直接 Postgres をインストールするのも可能ですが、 OS による手順差を避けて
-      <strong>Docker コンテナ</strong>として動かすのが今風。 「壊れたら docker compose down -v で全て無かったことにできる」
-      のが大きな利点。
+      実装の詳細はリポジトリの <code>server/</code> 配下に完成版があります。 自分の myserver.py の各関数を
+      ファイルに移しつつ、 <code>from .db import get_conn</code>、 <code>from . import auth, gacha</code> のような
+      相対 import に書き換えていく作業です。
     </p>
 
     <details>
-      <summary>📚 コラム: Docker / コンテナとは</summary>
+      <summary>📚 コラム: Python のパッケージ (= フォルダに __init__.py)</summary>
       <p>
-        <strong>コンテナ</strong> = OS とアプリと依存ライブラリをひとまとめにした「ポータブルな箱」。 サーバ (= Postgres、 Nginx、 etc) を「箱」 として配布できるので、 「俺のマシンでは動くんだけど」 問題が消える。
+        Python では「ディレクトリに <code>__init__.py</code> という空ファイルを置くと、 そのディレクトリが
+        パッケージとして扱われる」 という伝統があります (3.3 以降は名前空間パッケージという仕組みもあって
+        <code>__init__.py</code> が必須ではないですが、 明示的に置く方が混乱しません)。
       </p>
       <p>
-        <strong>Docker Compose</strong> = 複数のコンテナの起動設定を 1 つの YAML ファイルにまとめるツール。
-        <code>docker compose up -d</code> 1 行でガチャ用 Postgres が起動する。
+        パッケージ内のモジュール同士は <strong>相対 import</strong>で参照できます:
       </p>
+<pre><code class="language-python"># server/app.py から server/db.py の get_conn を呼ぶ
+from .db import get_conn
+
+# server/app.py から server/auth.py 全体を使う
+from . import auth
+auth.hash_password("...")</code></pre>
       <p>
-        本教材では Postgres を Docker で動かしますが、 アプリ自体 (Python サーバ、 フロント) は
-        ローカルで素のまま動かします。 「インストールが面倒な部分だけ Docker に任せる」 という良いとこ取り。
+        パッケージ全体を起動するときは <code>python -m server.app</code> のように <code>-m</code> を付けます。
+        これで Python が server を「パッケージとして」 扱い、 相対 import が動きます。
       </p>
     </details>
 
-    <h3>docker-compose.yml を置く</h3>
-
-    <div class="colab-step">
-      <span class="step-tag">📄 ~/gacha_gacha/docker-compose.yml</span>
-<pre><code class="language-yaml">services:
-  db:
-    image: postgres:16
-    container_name: gacha_pg
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: gacha
-      POSTGRES_USER: gacha
-      POSTGRES_PASSWORD: gacha
-      TZ: Asia/Tokyo
-    ports:
-      - "5432:5432"
-    volumes:
-      - gacha_pgdata:/var/lib/postgresql/data
-      - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
-      - ./db/seed.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
-
-volumes:
-  gacha_pgdata:</code></pre>
-    </div>
-
-    <h3>schema.sql / seed.sql を Postgres 方言で書く</h3>
-
+    <h3>起動コマンドが変わる</h3>
     <p>
-      Ch.2/Ch.6/Ch.7 で sqlite で作ったテーブル定義を、 Postgres 方言で書き直します。
-      違いは小さい: <code>INTEGER PRIMARY KEY AUTOINCREMENT</code> → <code>BIGSERIAL PRIMARY KEY</code>、
-      <code>TEXT DEFAULT (datetime('now'))</code> → <code>TIMESTAMPTZ DEFAULT NOW()</code> など。
+      分割前: <code>python myserver.py</code><br>
+      分割後: <code>python -m server.app</code>
     </p>
 
     <div class="colab-step">
-      <span class="step-tag">📄 ~/gacha_gacha/db/schema.sql</span>
-<pre><code class="language-sql">CREATE TABLE users (
-    id           BIGSERIAL    PRIMARY KEY,
-    name         TEXT         NOT NULL UNIQUE,
-    pass_hash    TEXT         NOT NULL,
-    display_name TEXT         NOT NULL,
-    coins        INTEGER      NOT NULL DEFAULT 1000 CHECK (coins &gt;= 0),
-    created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE characters (
-    id     BIGSERIAL PRIMARY KEY,
-    name   TEXT      NOT NULL UNIQUE,
-    rarity SMALLINT  NOT NULL CHECK (rarity BETWEEN 1 AND 5),
-    emoji  TEXT      NOT NULL DEFAULT '❓'
-);
-
-CREATE TABLE gachas (
-    id    BIGSERIAL PRIMARY KEY,
-    name  TEXT      NOT NULL UNIQUE,
-    price INTEGER   NOT NULL CHECK (price &gt; 0)
-);
-
-CREATE TABLE gacha_items (
-    id           BIGSERIAL PRIMARY KEY,
-    gacha_id     BIGINT    NOT NULL REFERENCES gachas(id)     ON DELETE CASCADE,
-    character_id BIGINT    NOT NULL REFERENCES characters(id) ON DELETE RESTRICT,
-    weight       INTEGER   NOT NULL CHECK (weight &gt; 0),
-    UNIQUE (gacha_id, character_id)
-);
-
-CREATE TABLE user_characters (
-    id           BIGSERIAL   PRIMARY KEY,
-    user_id      BIGINT      NOT NULL REFERENCES users(id)      ON DELETE CASCADE,
-    character_id BIGINT      NOT NULL REFERENCES characters(id) ON DELETE RESTRICT,
-    obtained_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-CREATE INDEX idx_user_characters_user ON user_characters(user_id);
-
-CREATE TABLE sessions (
-    token      TEXT        PRIMARY KEY,
-    user_id    BIGINT      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    expires_at TIMESTAMPTZ NOT NULL
-);
-CREATE INDEX idx_sessions_user ON sessions(user_id);</code></pre>
+      <span class="step-tag">▶️ 動作確認</span>
+<pre><code class="language-powershell"># venv が有効化された状態で
+cd $HOME\gacha_workspace
+python -m server.app</code></pre>
     </div>
 
     <p>
-      <code>seed.sql</code> は characters 12 体 + gachas 2 件 + gacha_items 19 件を INSERT。
-      リポジトリの <code>db/seed.sql</code> をそのまま流用 OK。
+      Ch.7 までと同じ起動メッセージ + ルート一覧が出ればパッケージ化は成功。 Bruno で一通りの
+      リクエストを打って、 機能不変であることを確認します。
     </p>
 
-    <h3>起動と確認</h3>
-<pre><code class="language-bash">docker compose up -d
-docker compose ps                                     # State が "Up (healthy)"
-docker compose exec db psql -U gacha -d gacha -c "\dt"
-docker compose exec db psql -U gacha -d gacha -c "SELECT name, rarity FROM characters LIMIT 3"</code></pre>
+    <div class="callout warn">
+      <span class="label">⚠️ よくある分割ミス</span>
+      <ul>
+        <li><code>from db import get_conn</code> (相対なし) → エラー。 <code>from .db import get_conn</code></li>
+        <li><code>__init__.py</code> を作り忘れる → 「No module named 'server'」</li>
+        <li>循環 import (例: db.py が auth を import、 auth が db を import) → ImportError。
+            役割を見直してどちらかに寄せる</li>
+      </ul>
+    </div>
 
-    <h2>8.3 sqlite3 → psycopg に置き換える</h2>
-
+    <!-- =============================================================== -->
+    <h2>8.2 設定を <code>.env</code> に外出し</h2>
     <p>
-      <code>?</code> プレースホルダを <code>%s</code> に変えるなど、 細かな方言差を吸収する作業です。
-      Ch.5 のコラムで触れたとおり、 ライブラリは違っても発想は同じ。
+      DB 接続情報をソースコードに直書きしているのを <code>.env</code> ファイルに移します。
+      これで「本番ではパスワードを変える」 「テストでは別 DB を使う」 などの場面に対応できます。
     </p>
-
-    <h3>psycopg をインストール</h3>
-<pre><code class="language-bash">pip install "psycopg[binary]&gt;=3.1,&lt;4"</code></pre>
-
-    <h3>server/db.py — Colab の get_conn を psycopg 版に</h3>
 
     <div class="colab-step">
-      <span class="step-tag">📄 ~/gacha_gacha/server/db.py</span>
-<pre><code class="language-python">"""DB 接続ヘルパ (psycopg 版)。"""
-import os
-from contextlib import contextmanager
+      <span class="step-tag">📝 .env.example — チェックインしてもよいテンプレ</span>
+<pre><code># 環境変数のサンプル。 cp .env.example .env して編集する。
+PGHOST=localhost
+PGPORT=5432
+PGDATABASE=gacha
+PGUSER=gacha
+PGPASSWORD=gacha
+APP_PORT=8000</code></pre>
+    </div>
+
+    <div class="colab-step">
+      <span class="step-tag">📝 server/db.py — 環境変数を読む</span>
+<pre><code class="language-python">import os
 import psycopg
 from psycopg.rows import dict_row
+from contextlib import contextmanager
 
-
-def _dsn():
-    return (
-        f"host={os.getenv('PGHOST', 'localhost')} "
-        f"port={os.getenv('PGPORT', '5432')} "
-        f"dbname={os.getenv('PGDATABASE', 'gacha')} "
-        f"user={os.getenv('PGUSER', 'gacha')} "
-        f"password={os.getenv('PGPASSWORD', 'gacha')}"
+def _conn_params() -> dict:
+    return dict(
+        host=os.getenv("PGHOST", "localhost"),
+        port=os.getenv("PGPORT", "5432"),
+        dbname=os.getenv("PGDATABASE", "gacha"),
+        user=os.getenv("PGUSER", "gacha"),
+        password=os.getenv("PGPASSWORD", "gacha"),
     )
-
 
 @contextmanager
 def get_conn():
-    conn = psycopg.connect(_dsn(), row_factory=dict_row, autocommit=False)
+    conn = psycopg.connect(**_conn_params(), row_factory=dict_row, autocommit=False)
     try:
         yield conn
         conn.commit()
@@ -234,232 +174,209 @@ def get_conn():
         conn.rollback()
         raise
     finally:
-        conn.close()
-
-
-def healthcheck():
-    try:
-        with get_conn() as conn, conn.cursor() as cur:
-            cur.execute("SELECT 1")
-            cur.fetchone()
-        return True
-    except Exception as e:
-        print(f"[db] healthcheck failed: {e}")
-        return False</code></pre>
+        conn.close()</code></pre>
     </div>
 
-    <h3>変更点まとめ (sqlite3 → psycopg)</h3>
-    <table>
-      <thead><tr><th>場所</th><th>sqlite3</th><th>psycopg</th></tr></thead>
-      <tbody>
-        <tr><td>接続</td><td><code>sqlite3.connect("gacha.db")</code></td><td><code>psycopg.connect(dsn, row_factory=dict_row)</code></td></tr>
-        <tr><td>プレースホルダ</td><td><code>?</code></td><td><code>%s</code></td></tr>
-        <tr><td>結果型</td><td><code>sqlite3.Row</code> + <code>dict()</code></td><td><code>dict_row</code> で初めから dict</td></tr>
-        <tr><td>カーソル</td><td>conn から直接 execute 可</td><td>明示的に <code>conn.cursor()</code> ブロック推奨</td></tr>
-        <tr><td>RETURNING</td><td>3.35 以降サポート</td><td>常時サポート</td></tr>
-        <tr><td>FOR UPDATE</td><td>無視 (実質シングルライタ)</td><td>正式サポート (本番はこれを使う)</td></tr>
-      </tbody>
-    </table>
+    <div class="callout note">
+      <span class="label">📝 .env を読み込ませる方法</span>
+      <p>
+        本教材では追加の依存 (<code>python-dotenv</code>) を入れずに、 PowerShell から手で読み込ませます:
+      </p>
+<pre><code class="language-powershell"># .env を作って編集
+Copy-Item .env.example .env
 
-    <h3>my_server.py の SQL を一括置換</h3>
-    <p>
-      エディタの全置換で <code>?</code> → <code>%s</code>。 ただし「文字列リテラル中の <code>?</code>」 を誤爆しないよう注意。
-      正規表現で <code>VALUES \(\?</code> や <code>= \?</code> など SQL 文脈に絞ると安全です。
-    </p>
-
-    <p>
-      <code>conn.execute(...)</code> は psycopg にもあるが、 推奨は <code>with conn.cursor() as cur: cur.execute(...)</code>。
-      行数が増えるので置換規則は:
-    </p>
-<pre><code class="language-python"># 旧 (sqlite3)
-cur = conn.execute("SELECT ... WHERE id = ?", (uid,))
-row = cur.fetchone()
-
-# 新 (psycopg)
-with conn.cursor() as cur:
-    cur.execute("SELECT ... WHERE id = %s", (uid,))
-    row = cur.fetchone()</code></pre>
-
-    <p>
-      参考実装はリポジトリの <code>server/app.py</code> にあります。 Colab 版と並べて差分を確認しながら
-      移植するのが楽。
-    </p>
-
-    <h2>8.4 my_server.py を役割ごとに分割</h2>
-
-    <p>
-      ここまでで <code>my_server.py</code> が 300 行近くになっているはず。 まだ読めるサイズだが、
-      役割で分けると見通しが格段に良くなります。
-    </p>
-
-    <table>
-      <thead><tr><th>ファイル</th><th>役割</th><th>主な中身</th></tr></thead>
-      <tbody>
-        <tr><td><code>server/db.py</code></td><td>DB 接続</td><td>get_conn / healthcheck</td></tr>
-        <tr><td><code>server/auth.py</code></td><td>認証</td><td>hash_password / verify_password / create_session / lookup_session</td></tr>
-        <tr><td><code>server/gacha.py</code></td><td>抽選</td><td>fetch_pool / draw / GachaItem</td></tr>
-        <tr><td><code>server/app.py</code></td><td>HTTP サーバ + ルーティング</td><td>App / ROUTES / 各ハンドラ / main()</td></tr>
-      </tbody>
-    </table>
-
-    <p>
-      これもリポジトリの <code>server/</code> に完成版があるので、 同じ構成で切り出すのが手っ取り早い。
-    </p>
-
-    <h3>起動コマンドを更新</h3>
-<pre><code class="language-bash"># 旧 (Colab)
-python my_server.py
-
-# 新 (ローカル、 モジュール経由)
-cd ~/gacha_gacha
-python -m server.app</code></pre>
-
-    <p>
-      <code>python -m server.app</code> は「<code>server/</code> パッケージの中の <code>app</code> モジュールを
-      実行する」 という意味。 Python 公式お作法。
-    </p>
-
-    <h2>8.5 自動テストを書く</h2>
-
-    <p>
-      手で全機能を毎回確かめるのは続かない。 <strong>機械が代わりにやってくれる</strong>形に。
-      2 種類のテストを足します。
-    </p>
-
-    <h3>smoke テスト (curl ベースの E2E)</h3>
-
-    <p>
-      サーバが起動した状態で全 API を順に叩いて、 期待通りに動くか確認する shell スクリプト。
-      新しい機能を足したあと、 既存が壊れていないかを 1 コマンドで確認できる。
-    </p>
-
-    <div class="colab-step">
-      <span class="step-tag">📄 ~/gacha_gacha/tests/smoke_curl.sh</span>
-<pre><code class="language-bash">#!/usr/bin/env bash
-# smoke テスト: docker compose up -d &amp;&amp; python -m server.app した状態で
-#   bash tests/smoke_curl.sh
-set -euo pipefail
-
-BASE_URL=${BASE_URL:-http://localhost:8000}
-USER_NAME="smoke_$(date +%s)"
-PASSWORD="smokepass123"
-TOKEN=""
-
-call() {
-  local method=$1 path=$2 body=${3:-}
-  local args=( -sS -X "$method" -w '\nHTTP_STATUS:%{http_code}\n' "$BASE_URL$path"
-               -H "Content-Type: application/json" )
-  [ -n "$TOKEN" ] &amp;&amp; args+=( -H "Authorization: Bearer $TOKEN" )
-  [ -n "$body"  ] &amp;&amp; args+=( -d "$body" )
-  curl "${args[@]}"
+# サーバ起動前に .env を環境変数として読み込む
+Get-Content .env | Where-Object { $_ -and $_ -notmatch '^\s*#' } | ForEach-Object {
+    $name, $value = $_ -split '=', 2
+    [Environment]::SetEnvironmentVariable($name.Trim(), $value.Trim(), "Process")
 }
 
-# 1) 登録 (token を取り出す)
-echo "== register =="
-RESP=$(call POST /api/register \
-  "{\"name\":\"$USER_NAME\",\"password\":\"$PASSWORD\",\"display_name\":\"Smoker\"}")
-echo "$RESP"
-TOKEN=$(echo "$RESP" | python3 -c "import json,sys; d=json.loads(sys.stdin.readline()); print(d.get('token',''))")
-
-# 2) /api/me
-echo; echo "== me =="
-call GET /api/me
-
-# 3) ガチャ一覧 + pull x 3 + box
-echo; echo "== gacha list =="
-call GET /api/gacha/list
-
-for i in 1 2 3; do
-  echo; echo "== pull #$i =="
-  call POST /api/gacha/pull '{"gacha_id":1}'
-done
-
-echo; echo "== box =="
-call GET /api/box
-
-echo; echo "== logout =="
-call POST /api/logout
-
-echo; echo "smoke test OK"</code></pre>
+# その後でサーバ起動
+python -m server.app</code></pre>
+      <p>
+        <code>.env</code> は<strong>git にコミットしない</strong>のが鉄則 (パスワードを含むため)。
+        リポジトリには <code>.env.example</code> という雛形だけ置いて、
+        <code>.gitignore</code> に <code>.env</code> を追加するのが定番のパターンです。
+      </p>
     </div>
 
-<pre><code class="language-bash">chmod +x tests/smoke_curl.sh
-bash tests/smoke_curl.sh</code></pre>
-
-    <h3>ユニットテスト (DB 抜きで純粋関数だけ)</h3>
-
+    <!-- =============================================================== -->
+    <h2>8.3 ユニットテスト (DB 不要)</h2>
     <p>
-      認証ハッシュ + ガチャ抽選分布のように、 DB を要らない純粋関数は単体で速くテストできます。
+      DB を立てなくても動くテストから書きます。 <strong>パスワードハッシュの roundtrip</strong> と
+      <strong>ガチャ抽選の分布</strong>。 純粋関数なのでテストしやすい題材です。
     </p>
 
     <div class="colab-step">
-      <span class="step-tag">📄 ~/gacha_gacha/tests/test_unit.py</span>
-<pre><code class="language-python">"""DB 不要のユニットテスト。  python tests/test_unit.py で実行。"""
-import pathlib, sys, random
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+      <span class="step-tag">📝 tests/test_unit.py</span>
+<pre><code class="language-python">"""DB-free unit tests for server.auth and server.gacha."""
+import pathlib, random, sys
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
 from server import auth, gacha
 
-failed = False
+_failed = False
+
 def expect(label, cond, detail=""):
-    global failed
-    print(f"  {'PASS' if cond else 'FAIL'}  {label}", detail if not cond else "")
-    failed = failed or (not cond)
+    global _failed
+    mark = "PASS" if cond else "FAIL"
+    if not cond: _failed = True
+    print(f"  {mark}  {label}  {detail if not cond else ''}")
 
-print("[auth]")
-h = auth.hash_password("hunter2")
-expect("正しいパスで verify",   auth.verify_password("hunter2", h))
-expect("間違ったパスで reject", not auth.verify_password("HUNTER2", h))
-expect("ソルトで毎回違う",       auth.hash_password("a") != auth.hash_password("a"))
+# ---- auth: hash + verify roundtrip --------------------------------------
+print("\n[auth] hash + verify roundtrip")
+pw = "correct horse battery staple"
+h = auth.hash_password(pw)
+expect("verify with correct password", auth.verify_password(pw, h))
+expect("verify with wrong password rejects", not auth.verify_password("wrong", h))
+expect("hash starts with pbkdf2_sha256$", h.startswith("pbkdf2_sha256$"))
 
-print("[gacha]")
-pool = [gacha.GachaItem(1, "A", 1, "🟢", 75),
-        gacha.GachaItem(2, "B", 5, "🐉", 25)]
-rng = random.Random(0)
-counts = {1: 0, 2: 0}
-for _ in range(10_000):
+# ---- auth: salt makes hashes differ -------------------------------------
+print("\n[auth] same password -> different hashes")
+h1 = auth.hash_password("abc12345")
+h2 = auth.hash_password("abc12345")
+expect("two stored hashes differ", h1 != h2)
+
+# ---- gacha: 200,000 回引いて weights に近づくか --------------------------
+print("\n[gacha] empirical distribution converges")
+pool = [
+    gacha.GachaItem(1, "A", 1, "🟢", 50),
+    gacha.GachaItem(2, "B", 2, "🦇", 30),
+    gacha.GachaItem(3, "C", 3, "🛡️", 15),
+    gacha.GachaItem(4, "D", 5, "🐉",  5),
+]
+total_w = sum(p.weight for p in pool)
+rng = random.Random(42)
+n = 200_000
+counts = {p.character_id: 0 for p in pool}
+for _ in range(n):
     counts[gacha.draw(pool, rng=rng).character_id] += 1
-expect(f"分布 ≈ 75/25 (実測 {counts[1]/100:.1f}%)", abs(counts[1]/10_000 - 0.75) &lt; 0.02)
+for p in pool:
+    expected = p.weight / total_w
+    actual = counts[p.character_id] / n
+    expect(f"char {p.character_id} {actual:.4f} vs {expected:.4f}",
+           abs(actual - expected) < 0.01)
 
-print("\n", "FAILED" if failed else "PASSED ✓")
-raise SystemExit(1 if failed else 0)</code></pre>
+print("\n========== summary ==========")
+print("  status:", "FAILED" if _failed else "PASSED")
+sys.exit(1 if _failed else 0)</code></pre>
     </div>
 
-<pre><code class="language-bash">python tests/test_unit.py</code></pre>
+    <div class="colab-step">
+      <span class="step-tag">▶️ 実行</span>
+<pre><code class="language-powershell">python tests\test_unit.py</code></pre>
+    </div>
 
-    <h2>8.6 完成! 動作確認</h2>
+    <div class="expected-output">
+      <span class="lbl">✅ 期待される出力</span>
+<pre><code>[auth] hash + verify roundtrip
+  PASS  verify with correct password
+  ...
+[gacha] empirical distribution converges
+  PASS  char 1 0.4990 vs 0.5000
+  ...
+========== summary ==========
+  status: PASSED</code></pre>
+    </div>
 
-    <p>ターミナル 3 つ用意:</p>
-
-    <h3>ターミナル A: Postgres</h3>
-<pre><code class="language-bash">cd ~/gacha_gacha
-docker compose up -d</code></pre>
-
-    <h3>ターミナル B: API サーバ</h3>
-<pre><code class="language-bash">cd ~/gacha_gacha
-source .venv/bin/activate
-python -m server.app
-# → listening on http://localhost:8000</code></pre>
-
-    <h3>ブラウザ</h3>
+    <!-- =============================================================== -->
+    <h2>8.4 smoke テスト (本物の Postgres + サーバを叩く)</h2>
     <p>
-      Ch.4 でダウンロードしたフロント (<code>web/index.html</code>) をダブルクリック。
-      API URL 入力欄を <code>http://localhost:8000</code> に設定 (公開 URL は使わない、 localhost で OK)。 これで:
+      本物の Postgres + 本物のサーバプロセスに対して、 <strong>主要 API を順に叩いて応答を確認</strong>する
+      シェルスクリプトを置きます。 リリース前にこれを通せば「最低限の体裁は OK」 と言えます。
+    </p>
+
+    <div class="callout note">
+      <span class="label">📝 smoke_curl.sh は bash 用</span>
+      <p>
+        本リポジトリには <code>tests/smoke_curl.sh</code> が用意されています。 これは bash スクリプトなので、
+        Windows では <strong>Git Bash</strong> もしくは <strong>WSL</strong>から実行してください。
+        PowerShell からそのまま <code>bash tests/smoke_curl.sh</code> として呼び出せます (Git Bash がインストールされていれば)。
+      </p>
+      <p>
+        必要な前提:
+      </p>
+      <ul>
+        <li><code>docker compose up -d</code> で Postgres が起動済み</li>
+        <li><code>python -m server.app</code> で API サーバが起動済み</li>
+        <li><code>jq</code> コマンドがインストール済み (Git Bash には付属、 winget でも入る: <code>winget install jqlang.jq</code>)</li>
+      </ul>
+    </div>
+
+    <div class="colab-step">
+      <span class="step-tag">▶️ 実行</span>
+<pre><code class="language-bash"># Git Bash もしくは PowerShell から
+bash tests/smoke_curl.sh</code></pre>
+    </div>
+
+    <p>
+      register → me → gacha list → pull × 3 → box → logout → me (401) の一連の流れが
+      期待通りに走り、 全部のステータスとレスポンスが見られます。
+    </p>
+
+    <!-- =============================================================== -->
+    <h2>8.5 GitHub Actions で自動実行</h2>
+    <p>
+      毎回手で叩くのは面倒なので、 push / PR のたびに上のテストを CI で走らせます。
+      リポジトリには <code>.github/workflows/test.yml</code> が用意されています。
+    </p>
+
+    <div class="colab-step">
+      <span class="step-tag">📝 .github/workflows/test.yml</span>
+<pre><code class="language-yaml">name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  unit-and-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install "psycopg[binary]" || true
+      - run: python tests/test_unit.py
+      - run: python tests/test_e2e_sqlite.py    # 開発者向け: SQLite で全 API を回す</code></pre>
+    </div>
+
+    <p>
+      <code>tests/test_e2e_sqlite.py</code> は<strong>開発者向け</strong>の高速 E2E テストで、
+      Postgres を立てずに SQLite で <code>server/app.py</code> 全体を回します。 受講者本人は
+      触らなくて構いませんが、 リポジトリの開発者・メンテ担当向けに置いてあります。
+    </p>
+
+    <!-- =============================================================== -->
+    <h2>8.6 これで「動くもの」 が完成</h2>
+    <p>
+      ここまでで:
     </p>
     <ul>
-      <li>手元のローカル PC で動く Postgres (Docker)</li>
-      <li>手元のローカル PC で動く Python サーバ (psycopg)</li>
-      <li>手元のローカル PC のブラウザに開いた学習モードフロント</li>
+      <li>HTTP サーバ・データベース・フロント・認証・ガチャ抽選・Box 集計が動く</li>
+      <li>パッケージ分割されて読みやすい</li>
+      <li>設定が <code>.env</code> に外出し</li>
+      <li>ユニット + E2E + smoke の 3 段でテストが書かれている</li>
+      <li>CI でテストが自動実行される</li>
     </ul>
-    <p>がぜんぶ繋がって、 ガチャゲームが本番と同じ構成で動きます。</p>
+
+    <p>
+      <strong>これがあなた自身が組み上げた、 動く Web バックエンドの完成形</strong>です。
+      あとは「ゲーム性を足す」 「データ量に耐える」 「複数人で開発する」 といった、 この先の世界。
+      Ch.9 では具体的な拡張アイディアをいくつか紹介します。
+    </p>
 
     <h2>本章のまとめ</h2>
     <ul>
-      <li>Colab はプロトタイプ用途。 本格的な動作環境はローカル + Docker</li>
-      <li>Postgres を Docker で動かすと、 OS 差や手順差が消える</li>
-      <li>sqlite3 → psycopg は<strong>方言の置換</strong>がメイン (<code>?</code> → <code>%s</code>、 接続関数差)</li>
-      <li>1 ファイル肥大化 → 役割で分割 (<code>db.py</code> / <code>auth.py</code> / <code>gacha.py</code> / <code>app.py</code>)</li>
-      <li>テストは smoke (E2E) + unit (純粋関数) の 2 種類が定番</li>
-      <li>ここまでで本教材は一旦完成。 Ch.9 はこれをさらに広げるアイディア集</li>
+      <li>大きくなった myserver.py は<strong>役割ごとに分割</strong>すると一気に読みやすくなる</li>
+      <li><code>__init__.py</code> + 相対 import + <code>python -m パッケージ.モジュール</code> 起動の流儀</li>
+      <li>設定は <code>.env</code> に外出しするとデプロイ時に変えやすい</li>
+      <li>テストの 3 段階: ユニット (関数単体) / smoke (本物に火を入れる) / E2E (機械的に全体を確認)</li>
+      <li>CI を入れると「壊れたまま push」 が早期に検知できる</li>
     </ul>
 
     <div class="pager">

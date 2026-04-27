@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>第2章 データベースの基礎 — gacha_gacha</title>
+<title>第2章 Postgres + Docker でデータベース基礎 — gacha_gacha</title>
 <link rel="stylesheet" href="./assets/style.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
 </head>
@@ -13,29 +13,187 @@
   <main>
     <div class="meta-bar">
       <span class="badge">Chapter 2</span>
-      <span>所要時間: 60〜90 分</span>
-      <span>形式: %%sql セルで 1 文ずつ実行</span>
+      <span>所要時間: 90〜120 分</span>
+      <span>形式: Docker で Postgres を立て、 psql で 1 テーブルを動かす</span>
     </div>
-    <h1>第 2 章 — データベースの基礎</h1>
+    <h1>第 2 章 — Postgres + Docker でデータベース基礎</h1>
 
     <p>
-      Ch.1 で HTTP サーバが動くようになったので、 次は<strong>データを置く場所</strong>を作ります。
-      この章では <em>users テーブル 1 つだけ</em> をサクッと立てて、
-      <strong>テーブル設計の基本</strong> と <strong>SQL の最小語彙</strong> を身につけるのがゴール。
-      ガチャ用の他のテーブル (キャラ、 ガチャ筐体など) は、 必要になった章でその場で増やしていきます。
+      この章では本物のリレーショナルデータベース <strong>PostgreSQL</strong> を、
+      Docker コンテナとして起動して、 <code>psql</code> という対話的シェルから SQL を打ちます。
+      ガチャシステム全体で必要な 5 つのテーブルのうち、 <strong>1 つだけ (users テーブル) を作る</strong>のが
+      この章のゴール。 残りは Ch.5 でまとめて作ります。
     </p>
 
-    <div class="callout tip">
-      <span class="label">📐 進め方</span>
-      <p>本章は <strong>%%sql セルマジック</strong>を使います。 1 セルに 1 つの SQL 文だけ書く形。
-        SQL のシンタックスハイライトが効き、 エラーも分かりやすくなります。</p>
-      <p>裏で動かすのは <strong>SQLite</strong> (ファイル <code>gacha.db</code>)。
-        Python 標準ライブラリだけで動き、 ファイルベースなのでセル間でデータが残ります。
-        本番想定の PostgreSQL とは <em>方言の差</em> がいくつかありますが、 本章で扱う範囲はほぼ共通です。</p>
+    <p>
+      この章を通過すると、 「Postgres コンテナを起動して、 psql に入って、 CREATE/INSERT/SELECT で
+      データを操作する」 一連の動作が手に馴染みます。 これが本教材を通じて使う土台になります。
+    </p>
+
+    <div class="callout note">
+      <span class="label">📝 なぜいきなり Postgres + Docker?</span>
+      <p>
+        SQLite で導入する選択肢もありますが、 教材としては<strong>本番でも使う Postgres を最初から触る</strong>
+        方を選びました。 理由:
+      </p>
+      <ul>
+        <li>「学習用 DB」 と「本番 DB」 でハマる場所が違う (型、 ロック、 トランザクション)。 結局
+            後で Postgres 固有の話を別途やる必要が出る</li>
+        <li>Docker は Web 開発の現場で必須スキル。 「とりあえず動かす」 を 1 度経験しておくと後が楽</li>
+        <li>SQL の文法面では SQLite と Postgres で大半が共通。 違うところは出てきたときにコラムで触れる</li>
+      </ul>
     </div>
 
-    <!-- ============================================================== -->
-    <h2>2.1 リレーション / テーブル — 厳密にいうと</h2>
+    <!-- =============================================================== -->
+    <h2>2.1 Postgres コンテナを起動する</h2>
+
+    <h3>docker-compose.yml を書く</h3>
+    <p>
+      作業フォルダの直下に <code>docker-compose.yml</code> を作ります。 これは「どんな Docker コンテナを、 どんな設定で立てるか」 を
+      宣言するファイルです。
+    </p>
+
+    <div class="colab-step">
+      <span class="step-tag">📝 docker-compose.yml — 学習用 Postgres 設定</span>
+<pre><code class="language-yaml"># docker-compose.yml
+# 学習用 Postgres コンテナ。
+#   docker compose up -d   で起動
+#   docker compose down    で停止
+#   docker compose down -v で完全リセット (ボリュームごと削除)
+services:
+  db:
+    image: postgres:16
+    container_name: gacha_pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gacha
+      POSTGRES_USER: gacha
+      POSTGRES_PASSWORD: gacha
+      TZ: Asia/Tokyo
+    ports:
+      - "5432:5432"
+    volumes:
+      # コンテナを止めてもデータが残るよう、 ホスト側のボリュームに保存
+      - gacha_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gacha -d gacha"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  gacha_pgdata:</code></pre>
+    </div>
+
+    <p>
+      作業フォルダで保存したら、 PowerShell から起動します:
+    </p>
+
+    <div class="colab-step">
+      <span class="step-tag">▶️ コンテナを起動</span>
+<pre><code class="language-powershell">cd $HOME\gacha_workspace
+
+# バックグラウンド起動 (-d = detached)
+docker compose up -d
+
+# 起動状況を確認
+docker ps
+docker compose logs db | Select-Object -Last 5</code></pre>
+    </div>
+
+    <div class="expected-output">
+      <span class="lbl">✅ 期待される出力</span>
+<pre><code>[+] Running 2/2
+ ✔ Network gacha_workspace_default  Created
+ ✔ Container gacha_pg                Started
+
+CONTAINER ID   IMAGE         COMMAND                  ...   STATUS                   PORTS
+abc123def456   postgres:16   "docker-entrypoint.s…"   ...   Up X seconds (healthy)   0.0.0.0:5432->5432/tcp
+...
+LOG:  database system is ready to accept connections</code></pre>
+    </div>
+
+    <details>
+      <summary>📚 コラム: <code>docker compose up -d</code> で何が起きているか</summary>
+      <ul>
+        <li><strong>image: postgres:16</strong> — Docker Hub から PostgreSQL バージョン 16 のイメージを引っ張ってくる
+            (初回は数分かかる)</li>
+        <li><strong>container_name</strong> — 起動するコンテナの名前。 後で <code>docker exec gacha_pg ...</code> として使う</li>
+        <li><strong>environment</strong> — Postgres 公式イメージの初期化に使う環境変数。
+            この 3 つで「データベース名 / ユーザー / パスワード」 が決まる</li>
+        <li><strong>ports: "5432:5432"</strong> — ホスト側 (= あなたの Windows PC) の 5432 番を、
+            コンテナ内の Postgres の 5432 番に転送する。 これで Python から <code>localhost:5432</code> で繋げる</li>
+        <li><strong>volumes: gacha_pgdata:...</strong> — コンテナを止めてもデータを失わないよう、
+            Postgres のデータ領域 (<code>/var/lib/postgresql/data</code>) を Docker 管理の名前付きボリュームに保存</li>
+      </ul>
+    </details>
+
+    <div class="callout warn">
+      <span class="label">⚠️ ポート 5432 の衝突</span>
+      <p>
+        もし起動時に <code>port is already allocated</code> や <code>bind: An attempt was made to access a socket...</code>
+        のようなエラーが出たら、 Windows で別の Postgres (例: ローカルにインストール済みの PG) が
+        5432 を使っています。 解決策:
+      </p>
+      <ul>
+        <li>使っていなければ Windows サービスから止める (タスクマネージャ → サービス → <code>postgresql-x64-XX</code> を停止)</li>
+        <li>残しておきたいなら <code>docker-compose.yml</code> の <code>ports</code> を <code>"5433:5432"</code> に変えて、
+            この教材では 5433 で繋ぐ</li>
+      </ul>
+      <p>占有プロセスを調べたい場合: <code>Get-NetTCPConnection -LocalPort 5432</code> で確認できます。</p>
+    </div>
+
+    <h3>psql に入って Postgres と話す</h3>
+    <p>
+      Postgres は起動しました。 これに接続する一番素直な方法が、 Postgres 公式の対話的シェル
+      <strong><code>psql</code></strong> です。 Docker コンテナの中に psql は同梱されているので、
+      <code>docker exec</code> でコンテナの中に入って実行します。
+    </p>
+
+    <div class="colab-step">
+      <span class="step-tag">▶️ psql に入る</span>
+<pre><code class="language-powershell"># docker exec で、 動いている gacha_pg コンテナの中に入って psql を起動
+docker exec -it gacha_pg psql -U gacha -d gacha
+
+# プロンプトが gacha=# に変わる。 ここからは SQL を打てる
+# 抜けるときは \q (バックスラッシュ + q)</code></pre>
+    </div>
+
+    <div class="expected-output">
+      <span class="lbl">✅ 期待される出力</span>
+<pre><code>psql (16.x)
+Type "help" for help.
+
+gacha=#</code></pre>
+    </div>
+
+    <details>
+      <summary>📚 コラム: <code>psql</code> のメタコマンド (バックスラッシュ系)</summary>
+      <p>
+        <code>psql</code> プロンプトでは、 SQL の他に <strong>メタコマンド</strong> という
+        psql 専用の命令が使えます。 全部 <code>\</code> (バックスラッシュ) で始まります。
+      </p>
+      <table>
+        <thead><tr><th>メタコマンド</th><th>意味</th></tr></thead>
+        <tbody>
+          <tr><td><code>\l</code></td><td>データベース一覧</td></tr>
+          <tr><td><code>\dt</code></td><td>現 DB のテーブル一覧</td></tr>
+          <tr><td><code>\d users</code></td><td>users テーブルの構造を表示</td></tr>
+          <tr><td><code>\dn</code></td><td>スキーマ一覧</td></tr>
+          <tr><td><code>\du</code></td><td>ユーザー (ロール) 一覧</td></tr>
+          <tr><td><code>\q</code></td><td>psql を終了</td></tr>
+          <tr><td><code>\?</code></td><td>メタコマンド一覧</td></tr>
+          <tr><td><code>\h SELECT</code></td><td>SQL 文 (例: SELECT) のヘルプ</td></tr>
+        </tbody>
+      </table>
+      <p>
+        <code>\dt</code> で「いま何のテーブルがあるか」、 <code>\d テーブル名</code> で
+        「そのテーブルの列と型と制約は?」 を確認するのが基本ルーチンです。
+      </p>
+    </details>
+
+    <!-- =============================================================== -->
+    <h2>2.2 リレーション / テーブル — 厳密にいうと</h2>
     <p>
       よく「テーブルは 2 次元の表」 と教わりますが、 リレーショナルモデルの定義は少し違います。
     </p>
@@ -67,7 +225,7 @@
         SQL の世界の <strong>テーブル (table)</strong> はこのリレーションを実装した「近い親戚」 で、 厳密には少し違います:
       </p>
       <ul>
-        <li>主キーが無いと<strong>行の重複が起き得る</strong> (例: <code>SELECT 'x' UNION ALL SELECT 'x'</code>)</li>
+        <li>主キーが無いと<strong>行の重複が起き得る</strong></li>
         <li>列に物理的な並び順がある (が、 アプリ側で頼ってはいけない)</li>
       </ul>
       <p>
@@ -76,24 +234,8 @@
       </p>
     </div>
 
-    <p>
-      この章でこれから作る <code>users</code> テーブルは、 中身の概念図で言うとこういうものです:
-    </p>
-    <table>
-      <thead><tr><th>id</th><th>name</th><th>display_name</th><th>created_at</th></tr></thead>
-      <tbody>
-        <tr><td>1</td><td>alice</td><td>アリス</td><td>2026-04-27 ...</td></tr>
-        <tr><td>2</td><td>bob</td><td>ボブ</td><td>2026-04-27 ...</td></tr>
-      </tbody>
-    </table>
-    <p>
-      4 つの<strong>属性</strong> (id, name, display_name, created_at) と、
-      <strong>ユーザー全員ぶんのタプル (= 行)</strong>。 ガチャシステムの全データは、
-      最終的にこういうリレーションが 5〜6 個集まったものになります。
-    </p>
-
-    <!-- ============================================================== -->
-    <h2>2.2 主キー (Primary Key, PK) を腹に落とす</h2>
+    <!-- =============================================================== -->
+    <h2>2.3 主キー (Primary Key, PK) を腹に落とす</h2>
     <p>
       リレーションの中で<strong>「その行を世界で 1 つだけ特定する列 (もしくは列の組み合わせ)」</strong>
       を主キーと呼びます。 ユーザーで言えば「id = 1 ならアリス、 id = 2 ならボブ、 同じ id を持つ別人はいない」 のような。
@@ -107,187 +249,193 @@
     </ol>
 
     <h3>自然キー vs 代替キー</h3>
-    <p>
-      <strong>自然キー</strong> = 業務上の意味を持つキー (例: マイナンバー、 メールアドレス)。
-      <strong>代替キー (surrogate key)</strong> = システムが採番した意味を持たない番号 (例: <code>id</code>)。
-    </p>
-    <p>
-      実務では <em>代替キー (id)</em> を主キーにして、 自然キーは <code>UNIQUE</code> 制約で別途守るのが定番。
-      理由: 自然キーは業務都合で変わったり、 NULL になったり、 形式が変わったりするから。
-      この教材も全テーブルで <code>id</code> を主キーにします。
-    </p>
-
-    <h3>複合キー</h3>
-    <p>
-      2 列以上を組み合わせて主キーにすることもできます。 例: 「あるユーザーがあるキャラを持っているか」
-      の中間テーブルでは <code>(user_id, character_id)</code> の組で主キーにできる。
-      第 8 章で出てきます。
-    </p>
-
-    <!-- ============================================================== -->
-    <h2>2.3 ipython-sql + SQLite を Colab に入れる</h2>
-
-    <div class="colab-step">
-      <span class="step-tag">📒 セル 2-A — ライブラリのロード</span>
-<pre><code class="language-python">!pip install ipython-sql --quiet
-%load_ext sql
-%sql sqlite:///gacha.db
-print("sqlite:///gacha.db に接続しました (ファイルが無ければ自動作成)")</code></pre>
-    </div>
-
-    <div class="expected-output">
-      <span class="lbl">✅ 期待される出力</span>
-<pre><code>sqlite:///gacha.db に接続しました (ファイルが無ければ自動作成)</code></pre>
-    </div>
-
-    <p>
-      <code>%load_ext sql</code> で SQL マジックを有効化、 <code>%sql sqlite:///gacha.db</code>
-      で SQLite のファイル <code>gacha.db</code> に接続。 これ以降のセル冒頭で <code>%%sql</code>
-      と書けば、 そのセルの中身が SQL として実行されます。 シンタックスハイライト付き。
-    </p>
-
-    <!-- ============================================================== -->
-    <h2>2.4 CREATE TABLE — users テーブルを作る</h2>
-
-    <div class="colab-step">
-      <span class="step-tag">📒 セル 2-B</span>
-<pre><code class="language-sql">%%sql
-DROP TABLE IF EXISTS users;
-CREATE TABLE users (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    name         TEXT    NOT NULL UNIQUE,
-    display_name TEXT    NOT NULL,
-    created_at   TEXT    NOT NULL DEFAULT (datetime('now'))
-);</code></pre>
-    </div>
-
-    <div class="expected-output">
-      <span class="lbl">✅ 期待される出力</span>
-<pre><code>* sqlite:///gacha.db
-Done.
-Done.</code></pre>
-    </div>
-
-    <h3>💡 解説</h3>
     <ul>
-      <li><code>INTEGER PRIMARY KEY AUTOINCREMENT</code> = 自動採番の主キー。
-          INSERT で <code>id</code> を指定しなければ 1, 2, 3 ... と入っていく</li>
-      <li><code>NOT NULL</code> = この列に NULL を入れさせない</li>
-      <li><code>UNIQUE</code> = この列に同じ値を 2 行入れさせない (主キーじゃないけど一意にしたい列に使う)</li>
-      <li><code>DEFAULT (datetime('now'))</code> = 値を指定しなければ現在時刻 (UTC) を入れる</li>
-      <li><code>DROP TABLE IF EXISTS</code> = もう一度このセルを実行できるように、 既存のテーブルがあれば消す
-          (本番では絶対に使わないので注意)</li>
+      <li><strong>自然キー</strong>: 業務上意味のある値そのまま (例: メールアドレス、 マイナンバー)</li>
+      <li><strong>代替キー (サロゲートキー)</strong>: DB が自動で振る連番 (例: <code>id INTEGER GENERATED BY DEFAULT AS IDENTITY</code>)</li>
     </ul>
-
     <p>
-      PostgreSQL の場合は <code>INTEGER PRIMARY KEY AUTOINCREMENT</code> が <code>BIGSERIAL PRIMARY KEY</code>
-      になり、 <code>created_at</code> の型は <code>TIMESTAMPTZ</code> になりますが、 思想はまったく同じ。
+      本教材では <strong>代替キー (= 自動採番の id 列)</strong> を主キーにします。 業務的な意味
+      (メアド変更、 名前変更) を主キーが背負わなくて済むので運用が楽。
     </p>
 
-    <!-- ============================================================== -->
-    <h2>2.5 INSERT — 3 件のユーザーを追加</h2>
+    <!-- =============================================================== -->
+    <h2>2.4 users テーブルを作る (CREATE TABLE)</h2>
+    <p>
+      psql プロンプトで以下を打ちます。 <strong>セミコロン (<code>;</code>) で 1 つの SQL 文の終わり</strong>を表します。
+      改行は OK で、 セミコロンを打つまで実行されません。
+    </p>
 
     <div class="colab-step">
-      <span class="step-tag">📒 セル 2-C</span>
-<pre><code class="language-sql">%%sql
-INSERT INTO users (name, display_name) VALUES ('alice', 'アリス');
-INSERT INTO users (name, display_name) VALUES ('bob',   'ボブ');
-INSERT INTO users (name, display_name) VALUES ('carol', 'キャロル');</code></pre>
+      <span class="step-tag">📒 SQL 1 — users テーブルを作成</span>
+<pre><code class="language-sql">CREATE TABLE users (
+    id           BIGSERIAL    PRIMARY KEY,
+    name         TEXT         NOT NULL UNIQUE,
+    display_name TEXT         NOT NULL,
+    created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+-- 確認
+\dt
+\d users</code></pre>
     </div>
 
     <div class="expected-output">
       <span class="lbl">✅ 期待される出力</span>
-<pre><code>1 rows affected.
-1 rows affected.
-1 rows affected.</code></pre>
+<pre><code>CREATE TABLE
+
+         List of relations
+ Schema | Name  | Type  | Owner
+--------+-------+-------+--------
+ public | users | table | gacha
+(1 row)
+
+                                      Table "public.users"
+    Column    |           Type           | Nullable |              Default
+--------------+--------------------------+----------+-----------------------------------
+ id           | bigint                   | not null | nextval('users_id_seq'::regclass)
+ name         | text                     | not null |
+ display_name | text                     | not null |
+ created_at   | timestamp with time zone | not null | now()
+Indexes:
+    "users_pkey" PRIMARY KEY, btree (id)
+    "users_name_key" UNIQUE CONSTRAINT, btree (name)</code></pre>
     </div>
 
+    <h3>💡 各列の意味</h3>
+    <table>
+      <thead><tr><th>列</th><th>型</th><th>意味</th></tr></thead>
+      <tbody>
+        <tr><td><code>id</code></td><td><code>BIGSERIAL PRIMARY KEY</code></td>
+            <td>自動採番の主キー (代替キー)。 BIGSERIAL = 64bit 整数 + 自動連番</td></tr>
+        <tr><td><code>name</code></td><td><code>TEXT NOT NULL UNIQUE</code></td>
+            <td>ログインID。 必須 (NOT NULL)、 重複なし (UNIQUE)</td></tr>
+        <tr><td><code>display_name</code></td><td><code>TEXT NOT NULL</code></td>
+            <td>画面表示用。 必須だが重複可 (= 同名の表示名は OK)</td></tr>
+        <tr><td><code>created_at</code></td><td><code>TIMESTAMPTZ NOT NULL DEFAULT NOW()</code></td>
+            <td>作成日時。 INSERT 時に自動で「いま」 が入る (TIMESTAMPTZ = タイムゾーン付き)</td></tr>
+      </tbody>
+    </table>
+
+    <!-- =============================================================== -->
+    <h2>2.5 INSERT / SELECT / UPDATE / DELETE</h2>
     <p>
-      <code>id</code> と <code>created_at</code> は省略しています (前者は AUTOINCREMENT、 後者は DEFAULT)。
-      確認のため SELECT:
+      テーブルにデータを入れて、 取り出して、 更新して、 消す。 SQL の基本 4 操作 (CRUD と呼ばれる) を試します。
     </p>
 
     <div class="colab-step">
-      <span class="step-tag">📒 セル 2-D</span>
-<pre><code class="language-sql">%%sql
-SELECT * FROM users ORDER BY id;</code></pre>
+      <span class="step-tag">📒 SQL 2 — INSERT で 3 件追加</span>
+<pre><code class="language-sql">INSERT INTO users (name, display_name) VALUES ('alice', 'アリス');
+INSERT INTO users (name, display_name) VALUES ('bob',   'ボブ');
+INSERT INTO users (name, display_name) VALUES ('carol', 'キャロル');
+
+-- 確認
+SELECT * FROM users;</code></pre>
     </div>
 
     <div class="expected-output">
-      <span class="lbl">✅ 期待される出力 (created_at は実行時刻)</span>
-<pre><code>id  name   display_name  created_at
---  -----  ------------  -------------------
-1   alice  アリス        2026-04-27 06:30:00
-2   bob    ボブ          2026-04-27 06:30:00
-3   carol  キャロル      2026-04-27 06:30:00</code></pre>
+      <span class="lbl">✅ 期待される出力</span>
+<pre><code>INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+ id | name  | display_name |          created_at
+----+-------+--------------+-------------------------------
+  1 | alice | アリス       | 2026-04-27 06:30:00+09
+  2 | bob   | ボブ         | 2026-04-27 06:30:00+09
+  3 | carol | キャロル     | 2026-04-27 06:30:00+09
+(3 rows)</code></pre>
     </div>
 
-    <!-- ============================================================== -->
-    <h2>2.6 UPDATE / DELETE</h2>
+    <p>
+      <code>id</code> と <code>created_at</code> は INSERT で省略しても、 DB が勝手に埋めてくれました
+      (それぞれ <code>BIGSERIAL</code> の自動採番、 <code>DEFAULT NOW()</code> の働き)。
+    </p>
 
     <div class="colab-step">
-      <span class="step-tag">📒 セル 2-E — UPDATE</span>
-<pre><code class="language-sql">%%sql
-UPDATE users SET display_name = 'アリス・スミス' WHERE name = 'alice';
+      <span class="step-tag">📒 SQL 3 — SELECT で絞り込み + 並び替え + 件数</span>
+<pre><code class="language-sql">-- name で絞る
+SELECT * FROM users WHERE name = 'alice';
+
+-- name の昇順、 表示は id と display_name だけ
+SELECT id, display_name FROM users ORDER BY name ASC;
+
+-- 件数を数える
+SELECT COUNT(*) AS total FROM users;</code></pre>
+    </div>
+
+    <div class="expected-output">
+      <span class="lbl">✅ 期待される出力</span>
+<pre><code> id | name  | display_name |          created_at
+----+-------+--------------+-------------------------------
+  1 | alice | アリス       | ...
+(1 row)
+
+ id | display_name
+----+--------------
+  1 | アリス
+  2 | ボブ
+  3 | キャロル
+(3 rows)
+
+ total
+-------
+     3
+(1 row)</code></pre>
+    </div>
+
+    <div class="colab-step">
+      <span class="step-tag">📒 SQL 4 — UPDATE で 1 行だけ書き換える</span>
+<pre><code class="language-sql">UPDATE users
+   SET display_name = 'アリス・スミス'
+ WHERE name = 'alice';
+
+-- 確認
 SELECT id, name, display_name FROM users WHERE name = 'alice';</code></pre>
     </div>
 
-    <div class="expected-output">
-      <span class="lbl">✅ 期待される出力</span>
-<pre><code>id  name   display_name
---  -----  ----------------
-1   alice  アリス・スミス</code></pre>
+    <div class="callout warn">
+      <span class="label">⚠️ WHERE を絶対に忘れない</span>
+      <code>UPDATE users SET display_name = '...';</code> のように <code>WHERE</code> を書き忘れると
+      <strong>全行が書き換わります</strong>。 本番でこれをやると事故です。 UPDATE / DELETE を打つときは、
+      まず <code>SELECT</code> で対象行を確認してから WHERE 句をコピーするのが鉄則。
     </div>
 
     <div class="colab-step">
-      <span class="step-tag">📒 セル 2-F — DELETE</span>
-<pre><code class="language-sql">%%sql
-DELETE FROM users WHERE name = 'carol';
-SELECT * FROM users ORDER BY id;</code></pre>
+      <span class="step-tag">📒 SQL 5 — DELETE で 1 行消す</span>
+<pre><code class="language-sql">DELETE FROM users WHERE name = 'carol';
+
+-- 確認
+SELECT * FROM users;</code></pre>
     </div>
 
-    <div class="expected-output">
-      <span class="lbl">✅ 期待される出力</span>
-<pre><code>id  name   display_name    created_at
---  -----  --------------  -------------------
-1   alice  アリス・スミス  2026-04-27 06:30:00
-2   bob    ボブ            2026-04-27 06:30:00</code></pre>
-    </div>
-
-    <div class="callout warn">
-      <span class="label">⚠️ WHERE を忘れない</span>
-      <code>UPDATE users SET display_name = 'X'</code> のように <code>WHERE</code> を忘れると
-      <strong>全行</strong>が更新される。 <code>DELETE FROM users</code> も同様で全行消える。
-      本番で初心者がやらかす一番有名なバグ。
-    </div>
-
-    <!-- ============================================================== -->
-    <h2>2.7 制約に「わざと」 殴られる</h2>
+    <!-- =============================================================== -->
+    <h2>2.6 制約 — 「変な値」 を DB が弾く</h2>
     <p>
-      DB の良さは「不正なデータが入りそうになったら自分から教えてくれる」 こと。
-      わざと違反させて、 各制約のメッセージを目で見ておきます。
+      SQL の真価は<strong>「データの整合性を DB が守ってくれる」</strong> ところにあります。
+      具体的には CREATE TABLE で書いた制約 (constraint) が、 不正な INSERT/UPDATE を弾きます。
+      実際に弾かれる様子を見てみます。
     </p>
 
     <div class="colab-step">
-      <span class="step-tag">📒 セル 2-G — UNIQUE 違反</span>
-<pre><code class="language-sql">%%sql
+      <span class="step-tag">📒 SQL 6 — UNIQUE 違反</span>
+<pre><code class="language-sql">-- name = 'alice' は既に存在する → UNIQUE 違反
 INSERT INTO users (name, display_name) VALUES ('alice', '別人だよ');</code></pre>
     </div>
 
     <div class="expected-output">
       <span class="lbl">✅ 期待される出力 (失敗するのが正解)</span>
-<pre><code>(sqlite3.IntegrityError) UNIQUE constraint failed: users.name
-[SQL: INSERT INTO users (name, display_name) VALUES ('alice', '別人だよ');]</code></pre>
+<pre><code>ERROR:  duplicate key value violates unique constraint "users_name_key"
+DETAIL:  Key (name)=(alice) already exists.</code></pre>
     </div>
 
     <p>
-      この <code>UNIQUE constraint failed</code> こそが、 第 7 章で <code>POST /api/register</code>
-      の重複登録を防ぐ<strong>最後の防波堤</strong>になります。 アプリ側でも事前に
-      <code>SELECT 1 FROM users WHERE name = ?</code> で重複チェックして
-      ユーザーに分かりやすいエラーメッセージを返しますが、 同時に同じ name で 2 件登録された場合
-      (= 競合) は事前チェックだけでは防げません。 そこで、 <strong>DB が UNIQUE 違反として弾く</strong>
-      ことで「データの一意性」 だけは絶対に守れる、 という二段構えにします。
+      この <code>duplicate key value violates unique constraint</code> こそが、
+      第 7 章で <code>POST /api/register</code> の重複登録を防ぐ<strong>最後の防波堤</strong>になります。
+      アプリ側でも事前に <code>SELECT 1 FROM users WHERE name = ...</code> で重複チェックして
+      ユーザーに分かりやすいエラーメッセージを返しますが、 同時に同じ name で 2 件登録された場合 (= 競合) は
+      事前チェックだけでは防げません。 そこで、 <strong>DB が UNIQUE 違反として弾く</strong>ことで
+      「データの一意性」 だけは絶対に守れる、 という二段構えにします。
     </p>
+
     <details>
       <summary>📚 コラム: 「アプリで書く」 vs 「DB が守る」</summary>
       <p>
@@ -299,59 +447,191 @@ INSERT INTO users (name, display_name) VALUES ('alice', '別人だよ');</code><
       </ul>
       <p>
         Ch.7 の <code>register</code> 実装では、 事前に <code>SELECT</code> で確認しつつ、
-        最終的な INSERT では UNIQUE 違反 (<code>psycopg.errors.UniqueViolation</code> など)
-        も拾える形にして、 競合時にも 400 を返せるようにします。
+        最終的な INSERT では UNIQUE 違反 (<code>psycopg.errors.UniqueViolation</code>) も拾える形にして、
+        競合時にも 400 を返せるようにします。
       </p>
     </details>
 
     <div class="colab-step">
-      <span class="step-tag">📒 セル 2-H — NOT NULL 違反</span>
-<pre><code class="language-sql">%%sql
-INSERT INTO users (name) VALUES ('mallory');   -- display_name を欠落させる</code></pre>
+      <span class="step-tag">📒 SQL 7 — NOT NULL 違反</span>
+<pre><code class="language-sql">INSERT INTO users (name) VALUES ('mallory');   -- display_name を欠落させる</code></pre>
     </div>
 
     <div class="expected-output">
       <span class="lbl">✅ 期待される出力</span>
-<pre><code>(sqlite3.IntegrityError) NOT NULL constraint failed: users.display_name</code></pre>
+<pre><code>ERROR:  null value in column "display_name" of relation "users" violates not-null constraint
+DETAIL:  Failing row contains (..., mallory, null, ...).</code></pre>
     </div>
 
     <div class="colab-step">
-      <span class="step-tag">📒 セル 2-I — 主キーを上書きしようとする</span>
-<pre><code class="language-sql">%%sql
-INSERT INTO users (id, name, display_name) VALUES (1, 'mallory', 'マロリー');</code></pre>
+      <span class="step-tag">📒 SQL 8 — CHECK 制約を試す</span>
+<pre><code class="language-sql">-- 後の章で使う coins 列に CHECK (coins >= 0) を付けるのと同じ趣旨
+-- ここでは ALTER TABLE で users に試しに足してみる
+
+ALTER TABLE users
+  ADD COLUMN age INTEGER CHECK (age &gt;= 0 AND age &lt; 150);
+
+INSERT INTO users (name, display_name, age) VALUES ('mallory', 'マロリー', 999);</code></pre>
     </div>
 
     <div class="expected-output">
       <span class="lbl">✅ 期待される出力</span>
-<pre><code>(sqlite3.IntegrityError) UNIQUE constraint failed: users.id</code></pre>
+<pre><code>ALTER TABLE
+ERROR:  new row for relation "users" violates check constraint "users_age_check"
+DETAIL:  Failing row contains (..., 999).</code></pre>
     </div>
 
     <p>
-      主キーは <code>UNIQUE + NOT NULL</code> の合わせ技 (内部的に UNIQUE 制約として実装される)。
-      手で <code>id</code> を指定しても、 既に存在する値なら弾かれる。
-    </p>
-
-    <h3>📝 自分でちょっと試す</h3>
-    <ul>
-      <li>セル 2-G を 2 度実行 → 何が違う?</li>
-      <li><code>UPDATE users SET name = 'bob' WHERE name = 'alice'</code> → どうなる? なぜ?</li>
-      <li><code>DELETE FROM users</code> (WHERE 無し) → 何が消える? その後 INSERT すると id はどこから始まる?</li>
-    </ul>
-
-    <!-- ============================================================== -->
-    <h2>2.8 仕上げ — Ch.3 への橋渡し</h2>
-    <p>
-      これで <code>gacha.db</code> ファイルに <code>users</code> テーブルができました。
-      ファイルベースなので、 Colab のランタイムを切らなければ次のセル・次の章でも同じテーブルが見えます。
+      999 歳のユーザーを作ろうとすると DB が弾いてくれました。 同様に、
+      文字列長 / 範囲 / 列同士の関係 (<code>CHECK (start_at &lt; end_at)</code>) など、
+      「アプリ側のバリデーションで言いたい論理」 を DB に書いておくと、 どの経路でデータが入っても安全に守られます。
     </p>
 
     <p>
-      第 3 章では、 Ch.1 で建てた HTTP サーバから <strong>このテーブルに INSERT / SELECT する</strong>
-      コードを書きます。 そこで初めて<strong>「サーバ + DB」</strong> が 1 つの動くシステムになります。
+      動作確認できたので、 試した <code>age</code> 列は片付けておきます (この後使わない):
     </p>
+
+    <div class="colab-step">
+      <span class="step-tag">📒 SQL 9 — age 列を消す</span>
+<pre><code class="language-sql">ALTER TABLE users DROP COLUMN age;
+\d users</code></pre>
+    </div>
+
+    <details>
+      <summary>📚 コラム: 外部キー (Foreign Key, FK) — 次章以降で活躍</summary>
+      <p>
+        Ch.5 で <code>gacha_items.gacha_id</code> や <code>user_characters.user_id</code> のような
+        参照関係を作るときに <strong>FK 制約</strong>が登場します。 こんな書き方:
+      </p>
+<pre><code class="language-sql">CREATE TABLE user_characters (
+    id           BIGSERIAL PRIMARY KEY,
+    user_id      BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    character_id BIGINT NOT NULL REFERENCES characters(id) ON DELETE RESTRICT,
+    obtained_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);</code></pre>
+      <ul>
+        <li><strong><code>REFERENCES users(id)</code></strong> = この列の値は <code>users.id</code> に
+            存在する値でなければならない、 という制約</li>
+        <li><strong><code>ON DELETE CASCADE</code></strong> = 親 (users) を消したら子 (user_characters) も
+            連鎖して消える</li>
+        <li><strong><code>ON DELETE RESTRICT</code></strong> = 子 (user_characters) で参照されている
+            親 (characters) を消そうとするとエラーで止める</li>
+      </ul>
+      <p>
+        FK は「孤立した子データ」 (= 親が存在しない参照) を DB レベルで防ぐためのもの。 Ch.5 で実際に登場します。
+      </p>
+    </details>
+
+    <!-- =============================================================== -->
+    <h2>2.7 持ち帰る — db/schema.sql に保存</h2>
+    <p>
+      ここまで psql で打ってきた DDL (= テーブル定義) を、 <strong>ファイルとして残す</strong>のが
+      重要なステップです。 このファイルがあれば、 別 PC でも、 数ヶ月後でも、 同じスキーマを再現できます。
+    </p>
+
+    <p>
+      作業フォルダに <code>db/</code> ディレクトリを作って、 <code>schema.sql</code> を保存します。
+      psql から抜けて (<code>\q</code>)、 PowerShell に戻ってから:
+    </p>
+
+    <div class="colab-step">
+      <span class="step-tag">📝 db/schema.sql — 「再現可能なスキーマ定義」</span>
+<pre><code class="language-sql">-- db/schema.sql
+-- ガチャシステムの DB スキーマ。 docker-entrypoint-initdb.d/ にマウントすれば
+-- コンテナ初回起動時に自動で実行される。
+
+CREATE TABLE IF NOT EXISTS users (
+    id           BIGSERIAL    PRIMARY KEY,
+    name         TEXT         NOT NULL UNIQUE,
+    display_name TEXT         NOT NULL,
+    created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+-- (Ch.5 でキャラ・ガチャ・所持履歴の 4 テーブルを足していく)</code></pre>
+    </div>
+
+    <div class="colab-step">
+      <span class="step-tag">📝 docker-compose.yml — schema.sql をマウントする</span>
+<pre><code class="language-yaml"># docker-compose.yml に volumes を 1 行追加
+services:
+  db:
+    image: postgres:16
+    container_name: gacha_pg
+    # ... 中略 ...
+    volumes:
+      - gacha_pgdata:/var/lib/postgresql/data
+      # 👇 これを追加。 コンテナ初回起動時に自動で実行される
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro</code></pre>
+    </div>
+
+    <p>
+      これで「コンテナを完全リセットしても、 schema.sql から再生成される」 状態になりました。
+      「データは消えるが、 構造は再現できる」 のが大事です。
+    </p>
+
+    <div class="colab-step">
+      <span class="step-tag">▶️ 完全リセットして再生成を確認</span>
+<pre><code class="language-powershell"># データボリュームごと削除
+docker compose down -v
+
+# 再起動 (このタイミングで schema.sql が走る)
+docker compose up -d
+
+# psql に入って users テーブルが既にあることを確認
+docker exec -it gacha_pg psql -U gacha -d gacha -c "\dt"</code></pre>
+    </div>
+
+    <div class="expected-output">
+      <span class="lbl">✅ 期待される出力</span>
+<pre><code>         List of relations
+ Schema | Name  | Type  | Owner
+--------+-------+-------+--------
+ public | users | table | gacha
+(1 row)</code></pre>
+    </div>
 
     <div class="callout note">
-      <span class="label">📝 もっと深く知りたい人へ</span>
+      <span class="label">📝 docker-entrypoint-initdb.d の挙動</span>
+      <ul>
+        <li>このディレクトリにマウントされた <code>.sql</code> / <code>.sh</code> ファイルは、
+            コンテナの<strong>初回起動時 (= データボリュームが空のとき)</strong> だけ実行される</li>
+        <li><code>docker compose down</code> (-v なし) → <code>up -d</code> ではボリュームが残るので<strong>再実行されない</strong></li>
+        <li>schema.sql を変えて反映したい場合は <code>docker compose down -v</code> でボリュームごと消すか、
+            手動で <code>docker exec ... psql ... -f schema.sql</code> で流し直す</li>
+      </ul>
+    </div>
+
+    <!-- =============================================================== -->
+    <h2>2.8 GUI で覗きたいとき (任意)</h2>
+    <p>
+      psql は強力ですがコマンドライン。 「もっと視覚的に見たい」 場合は GUI クライアントが便利です。
+      推奨は次の 2 つ (どちらも無料):
+    </p>
+    <ul>
+      <li><a href="https://dbeaver.io/" target="_blank">DBeaver</a> — 多 DB 対応、 高機能。 教材中ずっと使える</li>
+      <li><a href="https://www.pgadmin.org/" target="_blank">pgAdmin</a> — Postgres 公式、 機能豊富</li>
+      <li>VS Code の <strong>SQLTools</strong> 拡張 — エディタの中で軽く使うのに便利</li>
+    </ul>
+    <p>
+      接続情報はすべて同じ:
+    </p>
+<pre><code>Host:     127.0.0.1
+Port:     5432       (docker-compose.yml で 5433 に変えていた場合は 5433)
+Database: gacha
+User:     gacha
+Password: gacha</code></pre>
+
+    <h2>本章のまとめ</h2>
+    <ul>
+      <li>Postgres は Docker コンテナで <code>docker compose up -d</code> 一発で立つ。 データはボリュームで永続化</li>
+      <li>psql は <code>docker exec -it gacha_pg psql -U gacha -d gacha</code> で入れる。 抜けるのは <code>\q</code></li>
+      <li>SQL の基本 4 操作: CREATE / INSERT / SELECT / UPDATE / DELETE。 セミコロンで区切る。 UPDATE/DELETE は WHERE 必須</li>
+      <li>制約 (<code>NOT NULL / UNIQUE / CHECK / FK</code>) は DB が守る最後の防波堤。 アプリ側のバリデーションと組み合わせて二段構えにする</li>
+      <li>主キーは「行を世界で一意に特定」 する列。 自動採番 (<code>BIGSERIAL</code>) を使うのが定番</li>
+      <li>DDL は <code>db/schema.sql</code> としてファイル化、 docker-entrypoint-initdb.d にマウントすれば再現可能</li>
+    </ul>
+
+    <details>
+      <summary>📝 もっと深く知りたい人へ</summary>
       <p>
         本教材ではリレーショナルモデルの「<strong>原理原則</strong>」 に立ち入りすぎないよう、
         必要最小限を扱っています。 SQL は構文を覚えるものではなく <em>集合操作の言語</em>として
@@ -367,22 +647,7 @@ INSERT INTO users (id, name, display_name) VALUES (1, 'mallory', 'マロリー')
         本章の図 (<code>relation-structure.svg</code> / <code>relation-set.svg</code>) は本リポジトリ用に
         書き起こしたオリジナルです。 改変・再配布はリポジトリのライセンスに従ってください。
       </p>
-      <p>
-        本教材では <strong>JOIN / GROUP BY / ウィンドウ関数 / トランザクション</strong> は、
-        必要になる第 7 / 8 章でその場で扱います。
-        <em>「先取り学習」 にはせず、 必要が見えたときに最大の効率で吸収する</em>方針です。
-      </p>
-    </div>
-
-    <h2>本章のまとめ</h2>
-    <ul>
-      <li>リレーションは集合、 テーブルはその実用形。 「同じ事実を 1 箇所だけに」</li>
-      <li>主キーは「行を世界で一意に特定」 する列。 自動採番 (id) を使うのが定番</li>
-      <li><code>NOT NULL / UNIQUE</code> 等の制約は DB が守る最後の防波堤。
-          アプリ側のバリデーションと組み合わせて二段構えにする</li>
-      <li>SQL は <code>CREATE / INSERT / SELECT / UPDATE / DELETE</code> で大半が書ける。
-          残り (JOIN、 GROUP BY、 トランザクション) は必要なときに学ぶ</li>
-    </ul>
+    </details>
 
     <div class="pager">
       <a class="prev" href="./ch01-http.html">
@@ -391,7 +656,7 @@ INSERT INTO users (id, name, display_name) VALUES (1, 'mallory', 'マロリー')
       </a>
       <a class="next" href="./ch03-connect.html">
         <span class="lbl">次へ</span>
-        <span class="ttl">第 3 章 サーバとデータベースをつないでみる →</span>
+        <span class="ttl">第 3 章 Python から DB を叩く →</span>
       </a>
     </div>
   </main>

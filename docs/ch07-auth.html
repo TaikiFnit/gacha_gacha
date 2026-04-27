@@ -58,26 +58,18 @@ def register(h):
     </p>
 
     <div class="colab-step">
-      <span class="step-tag">📒 セル 7-A0 — users に pass_hash 列を追加 (冪等)</span>
-<pre><code class="language-python">import sqlite3
-conn = sqlite3.connect("gacha.db")
-conn.row_factory = sqlite3.Row
+      <span class="step-tag">📒 SQL 7-A0 — users に pass_hash 列を追加 (psql で実行)</span>
+<pre><code class="language-sql">-- 既に pass_hash 列があっても怒られないように IF NOT EXISTS
+ALTER TABLE users ADD COLUMN IF NOT EXISTS pass_hash TEXT NOT NULL DEFAULT '';
 
-cols = {row["name"] for row in conn.execute("PRAGMA table_info(users)")}
-if "pass_hash" not in cols:
-    # 既存行 (guest) は空文字を入れて埋める。 後でログイン不可にする目印になる
-    conn.execute("ALTER TABLE users ADD COLUMN pass_hash TEXT NOT NULL DEFAULT ''")
-    print("✅ pass_hash 列を追加")
-else:
-    print("ℹ️ pass_hash 列は既に存在")
-
-conn.commit()
-conn.close()</code></pre>
+-- 確認
+\d users</code></pre>
     </div>
 
     <p>
-      <strong>このセルは何度実行しても安全</strong>です。 既に列がある場合は何もしません。
+      <strong>この SQL は何度実行しても安全</strong>です。 既に列がある場合は何もしません。
       これで <code>users</code> テーブルは <code>id / name / display_name / created_at / coins / pass_hash</code> の 6 列になりました。
+      既存行 (guest) は <code>pass_hash</code> が空文字 (= ログイン不可) のままになります。 これで OK です。
     </p>
 
     <p>
@@ -99,13 +91,13 @@ def register(h):
         raise bad_request("password は 6 文字以上")
 
     with get_conn() as conn:
-        cur = conn.execute("SELECT 1 FROM users WHERE name = ?", (name,))
+        cur = conn.execute("SELECT 1 FROM users WHERE name = %s", (name,))
         if cur.fetchone():
             raise bad_request("その name は既に使われています")
         cur = conn.execute(
             """
             INSERT INTO users (name, pass_hash, display_name)
-            VALUES (?, ?, ?)
+            VALUES (%s, %s, %s)
             RETURNING id, name, display_name, coins
             """,
             (name, password, display_name),    # ⚠️ 平文。 次のステップでハッシュ化
@@ -120,14 +112,14 @@ print("✅ /api/register が実 INSERT に (まだ平文)")</code></pre>
     <ul>
       <li>フロント (画面) で<strong>一度ログアウト</strong>するか、 ブラウザの localStorage をクリアして仕切り直す</li>
       <li>でもまだフロントは guest で起動するので登録フォームが出ない... 一旦この状態で OK</li>
-      <li>代わりに REST クライアント (Hoppscotch) で:
+      <li>代わりに Bruno で:
         <ul>
           <li>POST <code>/api/register</code> body: <code>{"name":"alice","password":"secret123","display_name":"アリス"}</code></li>
           <li>200 + <code>{"user": {"id": 2, "name": "alice", ...}}</code></li>
           <li>もう一度同じ name で叩くと 400 「既に使われています」</li>
         </ul>
       </li>
-      <li>Colab で <code>%%sql SELECT * FROM users;</code> → guest と alice の 2 行がある (alice の pass_hash は<strong>平文 "secret123"</strong>!)</li>
+      <li>psql で <code>SELECT * FROM users;</code> → guest と alice の 2 行がある (alice の pass_hash は<strong>平文 "secret123"</strong>!)</li>
     </ul>
 
     <h2>7.2 パスワードをハッシュ化</h2>
@@ -246,11 +238,11 @@ def register(h):
     pass_hash = hash_password(password)            # ← ハッシュ化
 
     with get_conn() as conn:
-        cur = conn.execute("SELECT 1 FROM users WHERE name = ?", (name,))
+        cur = conn.execute("SELECT 1 FROM users WHERE name = %s", (name,))
         if cur.fetchone():
             raise bad_request("その name は既に使われています")
         cur = conn.execute(
-            "INSERT INTO users (name, pass_hash, display_name) VALUES (?, ?, ?) "
+            "INSERT INTO users (name, pass_hash, display_name) VALUES (%s, %s, %s) "
             "RETURNING id, name, display_name, coins",
             (name, pass_hash, display_name),
         )
@@ -266,7 +258,7 @@ def login(h):
 
     with get_conn() as conn:
         cur = conn.execute(
-            "SELECT id, name, display_name, coins, pass_hash FROM users WHERE name = ?",
+            "SELECT id, name, display_name, coins, pass_hash FROM users WHERE name = %s",
             (name,),
         )
         row = cur.fetchone()
@@ -304,7 +296,7 @@ print("✅ register/login がハッシュ化版に")</code></pre>
         <li><strong>Authorization ヘッダ (Bearer Token)</strong>: クライアント側で保管して、 毎回明示的に付ける</li>
       </ol>
       <p>
-        本教材は Colab + クロスオリジン環境で Cookie 設定が地雷だらけなので、 業界でも広く使われる
+        本教材は file:// フロントや別ポート配信などのクロスオリジン環境を扱うので、 Cookie 設定の落とし穴を避けつつ、 業界でも広く使われる
         <strong>Bearer Token 方式</strong>を採用します。 SPA や REST API、 モバイルアプリの定番。
       </p>
     </details>
@@ -312,13 +304,12 @@ print("✅ register/login がハッシュ化版に")</code></pre>
     <h3>sessions テーブル</h3>
 
     <div class="colab-step">
-      <span class="step-tag">📒 セル 7-D — sessions テーブル</span>
-<pre><code class="language-sql">%%sql
-CREATE TABLE IF NOT EXISTS sessions (
-    token      TEXT    PRIMARY KEY,
-    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    created_at TEXT    NOT NULL DEFAULT (datetime('now')),
-    expires_at TEXT    NOT NULL
+      <span class="step-tag">📒 SQL 7-D — sessions テーブル (psql で実行)</span>
+<pre><code class="language-sql">CREATE TABLE IF NOT EXISTS sessions (
+    token      TEXT        PRIMARY KEY,
+    user_id    BIGINT      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);</code></pre>
     </div>
@@ -339,7 +330,7 @@ def new_session_token():
 def create_session(conn, user_id):
     token = new_session_token()
     expires = (datetime.now(timezone.utc) + SESSION_TTL).strftime("%Y-%m-%d %H:%M:%S")
-    conn.execute("INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)",
+    conn.execute("INSERT INTO sessions (token, user_id, expires_at) VALUES (%s, %s, %s)",
                  (token, user_id, expires))
     return token, expires
 
@@ -363,7 +354,7 @@ def lookup_session(conn, token):
 
 def delete_session(conn, token):
     if not token: return
-    conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+    conn.execute("DELETE FROM sessions WHERE token = %s", (token,))
 
 print("✅ session 操作関数 ready")</code></pre>
     </div>
@@ -385,11 +376,11 @@ def register(h):
     pass_hash = hash_password(password)
 
     with get_conn() as conn:
-        cur = conn.execute("SELECT 1 FROM users WHERE name = ?", (name,))
+        cur = conn.execute("SELECT 1 FROM users WHERE name = %s", (name,))
         if cur.fetchone():
             raise bad_request("その name は既に使われています")
         cur = conn.execute(
-            "INSERT INTO users (name, pass_hash, display_name) VALUES (?, ?, ?) "
+            "INSERT INTO users (name, pass_hash, display_name) VALUES (%s, %s, %s) "
             "RETURNING id, name, display_name, coins",
             (name, pass_hash, display_name),
         )
@@ -405,7 +396,7 @@ def login(h):
     password = body.get("password") or ""
     with get_conn() as conn:
         cur = conn.execute(
-            "SELECT id, name, display_name, coins, pass_hash FROM users WHERE name = ?",
+            "SELECT id, name, display_name, coins, pass_hash FROM users WHERE name = %s",
             (name,))
         row = cur.fetchone()
         if row is None or not verify_password(password, row["pass_hash"]):
@@ -489,13 +480,13 @@ def gacha_pull(h):
     with get_conn() as conn:
         user = require_user(h, conn)                  # ← ここが変わった
 
-        g = conn.execute("SELECT id, name, price FROM gachas WHERE id = ?",
+        g = conn.execute("SELECT id, name, price FROM gachas WHERE id = %s",
                          (gacha_id,)).fetchone()
         if g is None:
             raise not_found("そのガチャは存在しません")
 
         coins_now = conn.execute(
-            "SELECT coins FROM users WHERE id = ?", (user["id"],)
+            "SELECT coins FROM users WHERE id = %s", (user["id"],)
         ).fetchone()["coins"]
         if coins_now &lt; g["price"]:
             raise bad_request(f"コインが足りません (必要 {g['price']} / 所持 {coins_now})")
@@ -506,12 +497,12 @@ def gacha_pull(h):
         won = draw(pool)
 
         new_coins = conn.execute(
-            "UPDATE users SET coins = coins - ? WHERE id = ? RETURNING coins",
+            "UPDATE users SET coins = coins - ? WHERE id = %s RETURNING coins",
             (g["price"], user["id"]),                # ← user_id をログイン中の人に
         ).fetchone()["coins"]
 
         obtained_at = conn.execute(
-            "INSERT INTO user_characters (user_id, character_id) VALUES (?, ?) "
+            "INSERT INTO user_characters (user_id, character_id) VALUES (%s, %s) "
             "RETURNING obtained_at",
             (user["id"], won.character_id),         # ← ここも
         ).fetchone()["obtained_at"]
@@ -543,7 +534,7 @@ def box(h):
         """, (user["id"],)).fetchall()
 
         total_pulls = conn.execute(
-            "SELECT COUNT(*) AS n FROM user_characters WHERE user_id = ?",
+            "SELECT COUNT(*) AS n FROM user_characters WHERE user_id = %s",
             (user["id"],),
         ).fetchone()["n"]
 
@@ -565,13 +556,13 @@ print("✅ pull / box が「ログイン中ユーザーの操作」 に")</code>
       <li><strong>bob / different456</strong> で新規登録 → 別の Box (= 完全に空) からスタート</li>
       <li>bob で 5 連 → bob の Box にだけ追加</li>
       <li>「ログアウト」 → alice で再ログイン → alice の Box に戻る (= 別ユーザー)</li>
-      <li>Colab で確認:
-<pre><code class="language-sql">%%sql
+      <li>psql で確認:
+<pre><code class="language-sql">-- psql で直接打って確認
 SELECT u.name, COUNT(uc.id) AS owned, u.coins
   FROM users u
   LEFT JOIN user_characters uc ON uc.user_id = u.id
  WHERE u.id != 1   -- guest を除く
- GROUP BY u.id;</code></pre>
+ GROUP BY u.id, u.name, u.coins;</code></pre>
         alice と bob で別々の所持数 / コインになっている</li>
     </ol>
 

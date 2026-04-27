@@ -67,7 +67,7 @@
 
     <div class="colab-step">
       <span class="step-tag">📒 セル 6-A — JOIN だけしてみる</span>
-<pre><code class="language-sql">%%sql
+<pre><code class="language-sql">-- psql で直接打って試す
 -- guest (id=1) の履歴 + キャラ情報
 SELECT uc.id AS uc_id, c.name, c.rarity, c.emoji, uc.obtained_at
   FROM user_characters uc
@@ -112,7 +112,7 @@ SELECT uc.id AS uc_id, c.name, c.rarity, c.emoji, uc.obtained_at
 
     <div class="colab-step">
       <span class="step-tag">📒 セル 6-B — GROUP BY で集計 + JOIN でキャラ名も付ける</span>
-<pre><code class="language-sql">%%sql
+<pre><code class="language-sql">-- psql で直接打って試す
 SELECT c.id, c.name, c.rarity, c.emoji,
        COUNT(*)            AS count,
        MIN(uc.obtained_at) AS first_obtained_at,
@@ -120,7 +120,7 @@ SELECT c.id, c.name, c.rarity, c.emoji,
   FROM user_characters uc
   JOIN characters       c ON c.id = uc.character_id
  WHERE uc.user_id = 1
- GROUP BY c.id
+ GROUP BY c.id, c.name, c.rarity, c.emoji
  ORDER BY c.rarity DESC, c.id;</code></pre>
     </div>
 
@@ -168,13 +168,13 @@ def box(h):
 
         # 2) 通算 pull 回数 (= 履歴の総数)
         total_pulls = conn.execute(
-            "SELECT COUNT(*) AS n FROM user_characters WHERE user_id = ?",
+            "SELECT COUNT(*) AS n FROM user_characters WHERE user_id = %s",
             (user_id,),
         ).fetchone()["n"]
 
         # 3) 最新の coins / ユーザー情報
         u = dict(conn.execute(
-            "SELECT id, name, display_name, coins FROM users WHERE id = ?",
+            "SELECT id, name, display_name, coins FROM users WHERE id = %s",
             (user_id,),
         ).fetchone())
 

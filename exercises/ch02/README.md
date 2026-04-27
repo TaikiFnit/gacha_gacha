@@ -1,20 +1,30 @@
-# 第2章 ステップ式実習
+# 第2章 ステップ式実習 (playground)
 
-本番DBを汚さないため、**playground用のDBを作って**そこで遊ぶのを推奨。
+本番 DB (= `gacha` データベース) を汚さないため、 **playground 用のデータベースを別途作って**
+そこで遊ぶのを推奨。 Ch.2 の本編は `gacha` で進めますが、 こちらは制約違反を試したり
+壊して試行錯誤するための練習場です。
+
+Windows PowerShell で:
+
+```powershell
+# 0. play データベースを作る (1 回だけ)
+docker exec -it gacha_pg psql -U gacha -d gacha -c "CREATE DATABASE play;"
+
+# 1. 各ステップを流す (Get-Content でファイル内容を流し込む)
+Get-Content exercises\ch02\step1_users_only.sql       | docker exec -i gacha_pg psql -U gacha -d play
+Get-Content exercises\ch02\step2_characters.sql       | docker exec -i gacha_pg psql -U gacha -d play
+Get-Content exercises\ch02\step3_gachas_and_items.sql | docker exec -i gacha_pg psql -U gacha -d play
+Get-Content exercises\ch02\step4_user_characters.sql  | docker exec -i gacha_pg psql -U gacha -d play
+Get-Content exercises\ch02\step5_join_aggregate.sql   | docker exec -i gacha_pg psql -U gacha -d play
+
+# 2. 対話的に試したいとき
+docker exec -it gacha_pg psql -U gacha -d play
+```
+
+Git Bash / WSL / macOS / Linux なら従来どおりリダイレクトが使えます:
 
 ```bash
-# ホスト側から:
-docker compose exec -T db psql -U gacha -d gacha -c "CREATE DATABASE play;"
-
-# 各ステップを流す
 docker compose exec -T db psql -U gacha -d play < exercises/ch02/step1_users_only.sql
-docker compose exec -T db psql -U gacha -d play < exercises/ch02/step2_characters.sql
-docker compose exec -T db psql -U gacha -d play < exercises/ch02/step3_gachas_and_items.sql
-docker compose exec -T db psql -U gacha -d play < exercises/ch02/step4_user_characters.sql
-docker compose exec -T db psql -U gacha -d play < exercises/ch02/step5_join_aggregate.sql
-
-# 対話的に試したいときは
-docker compose exec db psql -U gacha -d play
 ```
 
 | step | やること                          |

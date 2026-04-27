@@ -1,0 +1,22 @@
+# Windows / macOS / Linux 混在対策。
+# テキストは git の中では LF、 チェックアウト時にプラットフォームに合わせる。
+* text=auto eol=lf
+
+# 明示的に LF 固定 (シェルスクリプトや Docker 用設定は LF でないと壊れる)
+*.sh         text eol=lf
+*.py         text eol=lf
+*.sql        text eol=lf
+*.yml        text eol=lf
+*.yaml       text eol=lf
+Dockerfile   text eol=lf
+docker-compose.yml text eol=lf
+
+# Windows 専用スクリプトは CRLF
+*.ps1        text eol=crlf
+*.cmd        text eol=crlf
+*.bat        text eol=crlf
+
+# バイナリ
+*.png        binary
+*.jpg        binary
+*.svg        text

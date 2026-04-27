@@ -14,38 +14,41 @@
     <div class="meta-bar">
       <span class="badge">Chapter 1</span>
       <span>所要時間: 60〜90 分</span>
-      <span>形式: 1 つのサーバを 6 ステップで組み立てる</span>
+      <span>形式: 1 つの myserver.py を 6 ステップで組み立てる</span>
     </div>
     <h1>第 1 章 — HTTPサーバーを段階的に組み立てる</h1>
 
     <p>
-      この章で書く HTTP サーバは、<strong>本章だけで終わらず、 これから先の章でもずっと触り続けるあなた自身のコードになります</strong>。
-      Step 1 で最小サーバを動かし、以降のステップでは <strong>同じサーバを書き足し / 書き換え</strong> ながら
-      機能を足していきます。第4章以降は、<strong>ここで組み立てたサーバをそのまま運んで</strong>
+      この章で書く HTTP サーバ <code>myserver.py</code> は、 <strong>これから先の章でもずっと触り続けるあなた自身のコード</strong>になります。
+      ステップ 1 で最小サーバを動かし、 以降のステップでは<strong>同じファイルを書き足し / 書き換え</strong> ながら
+      機能を足していきます。 第 3 章以降は、 ここで組み立てたサーバをそのまま運んで
       ガチャ API へ拡張していきます。
     </p>
 
     <div class="callout tip">
-      <span class="label">📐 進め方 (ステップ方式)</span>
+      <span class="label">📐 進め方</span>
       <p>各ステップは:</p>
       <ol>
-        <li><strong>📒 セル N: コードを Colab にコピペ → Shift+Enter で動かす</strong></li>
+        <li><strong>📒 myserver.py をコードブロックの内容で書き換え (もしくは新規作成) → 保存</strong></li>
+        <li><strong>PowerShell ターミナル A</strong> で <code>python myserver.py</code> を起動</li>
+        <li><strong>PowerShell ターミナル B</strong> で <code>curl</code> もしくは Bruno でリクエストを投げる</li>
         <li>✅ 期待される出力が出ることを確認</li>
-        <li>💡 解説を読む</li>
-        <li>(任意) 📝 「自分でちょっと変えてみる」 で 1 か所いじって、出力がどう変わるか観察</li>
+        <li>(任意) 📝 「自分でちょっと変えてみる」 で 1 か所いじって、 出力がどう変わるか観察</li>
       </ol>
       <p>各ステップが終わるたびに <strong>動くサーバが手元にある</strong> 状態になります。
-        最後の Step 6 のセルが、そのまま「あなたの HTTP サーバ完成版」になります。</p>
+        最後のステップ 6 が、 そのまま「あなたの HTTP サーバ完成版」 になります。</p>
     </div>
 
     <div class="callout note">
       <span class="label">📝 前提</span>
-      第 0 章のセル 1 (作業ディレクトリのセットアップ) を実行済みである前提で進めます。
+      第 0 章で Python / Bruno のインストール、 PowerShell の動作確認が済んでいる前提で進めます。
+      作業フォルダは Ch.0 で作った <code>$HOME\gacha_workspace</code> を想定。
     </div>
 
-    <h2>イントロ — HTTP は「ヘッダ + 空行 + 本文」のテキスト</h2>
+    <!-- =============================================================== -->
+    <h2>1.1 HTTP は「ヘッダ + 空行 + 本文」 のテキスト</h2>
     <p>
-      クライアントが手紙を 1 通送り、サーバーが返事を 1 通返す。手紙の中身はただのテキストです。
+      クライアントが手紙を 1 通送り、 サーバーが返事を 1 通返す。 手紙の中身はただのテキストです。
     </p>
 <pre><code>POST /api/login HTTP/1.1
 Host: localhost:8000
@@ -59,7 +62,7 @@ Content-Length: 32
 
 {"user":{"id":1,"name":"alice"}}</code></pre>
     <p>
-      Web の上で動くもの全て、結局はこの形のテキストの上に積み上がっています。
+      Web の上で動くもの全て、 結局はこの形のテキストの上に積み上がっています。
     </p>
 
     <details>
@@ -72,16 +75,14 @@ Content-Length: 32
 └┬─┘   └─────┬─────┘└┬┘└────┬────┘└─┬─┘└┬┘
 スキーム  ホスト    ポート  パス    クエリ フラグメント</code></pre>
       <ul>
-        <li><strong>スキーム</strong>: <code>http</code> or <code>https</code> (暗号化付き)。 他に
-            <code>ftp</code>, <code>file</code>, <code>ws</code> 等あるが Web では実質この 2 つ</li>
-        <li><strong>ホスト</strong>: 通信相手のマシン名。 <code>example.com</code> のような
-            ドメイン名は DNS で IP アドレスに変換される</li>
+        <li><strong>スキーム</strong>: <code>http</code> or <code>https</code> (暗号化付き)</li>
+        <li><strong>ホスト</strong>: 通信相手のマシン名。 ドメイン名は DNS で IP アドレスに変換される</li>
         <li><strong>ポート番号</strong>: 同じマシンに複数のサーバが立っているとき、 番号で識別する
             (= ビルの号室番号みたいなもの)。 0〜65535 の整数。 1024 未満は OS 予約
             (HTTP=80、 HTTPS=443、 SSH=22 等)。 自作サーバは 1024 以上を使う (例: 8000、 5500)</li>
-        <li><strong>パス</strong>: サーバ上のリソース位置。 これが Ch.1 で見ている <code>self.path</code></li>
+        <li><strong>パス</strong>: サーバ上のリソース位置。 これが本章で見ている <code>self.path</code></li>
         <li><strong>クエリ</strong>: <code>?key=value&amp;k2=v2</code> 形式の追加パラメータ。
-            Step 3 で <code>parse_qs</code> で分解した</li>
+            ステップ 3 で <code>parse_qs</code> で分解する</li>
         <li><strong>フラグメント</strong>: ページ内アンカー。 サーバには送られず、 ブラウザだけが見る</li>
       </ul>
       <p>
@@ -90,8 +91,8 @@ Content-Length: 32
         他の人からは見えず、 自分のマシン内だけで完結する通信に使います。 開発中の通常の宛先。
       </p>
       <p>
-        Ch.1 のサーバは <code>http://127.0.0.1:8000</code> (= <code>http://localhost:8000</code>)
-        で待ち受けていますが、 これは「自分のマシンの 8000 番ポートに、 暗号化なしの HTTP で繋ぐ」
+        本章のサーバは <code>http://127.0.0.1:8000</code> (= <code>http://localhost:8000</code>)
+        で待ち受けますが、 これは「自分のマシンの 8000 番ポートに、 暗号化なしの HTTP で繋ぐ」
         という意味。
       </p>
     </details>
@@ -99,7 +100,7 @@ Content-Length: 32
     <details>
       <summary>📚 コラム: HTTP ステータスコード — 数字 3 桁の意味</summary>
       <p>
-        Step 1 や Step 2 で <code>self.send_response(200)</code> と書きました。 この 3 桁の数字を
+        この章でも何度も出てくる <code>self.send_response(200)</code> の <code>200</code>。 この 3 桁の数字を
         <strong>HTTP ステータスコード</strong>と呼び、 「サーバがクライアントに何を伝えたいか」 を
         ザックリ表します。 1 桁目で大別すると:
       </p>
@@ -137,103 +138,149 @@ Content-Length: 32
       <ul>
         <li><strong>開き方</strong>: ブラウザのページ上で 右クリック → 「検証」 (Inspect) → 上タブの「Network」
             (Chrome / Edge) または「ネットワーク」 (Firefox)</li>
-        <li><strong>キーボードショートカット</strong>: macOS は <kbd>⌥⌘I</kbd>、 Windows/Linux は <kbd>Ctrl+Shift+I</kbd></li>
+        <li><strong>キーボードショートカット</strong>: Windows は <kbd>Ctrl+Shift+I</kbd></li>
         <li>ページを再読み込みすると、 そのページが投げた HTTP リクエストが全部一覧で出る</li>
         <li>1 行クリック → リクエストヘッダ、 レスポンスヘッダ、 ステータスコード、 ボディ、 所要時間 が見える</li>
       </ul>
-      <p>
-        本教材の学習モードフロント (Ch.4 で登場) には独自のデバッグコンソールが付いていますが、
-        Network タブはそれと同じ情報を <em>あらゆる Web サイト</em>で見られる汎用ツール。
-        覚えておくと普段使うサイトの裏側も丸見えになります。
-      </p>
-    </details>
-
-    <details>
-      <summary>📚 参考: HTTP の下にある TCP — 雰囲気だけ知っておく</summary>
-      <p>
-        HTTP は「テキストのフォーマット規則」で、実際にバイト列を運ぶのは
-        <strong>TCP</strong> です。 OS から見ると「IP + ポート」 で待ち受けるソケットを開き、
-        そこに飛んできたバイトを読んで返事を書く処理。
-        Python の <code>socket</code> モジュールでそのまま書くと、
-        以下のような 10 行ぐらいになります (動かす必要はありません、雰囲気だけ):
-      </p>
-<pre><code class="language-python">import socket
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.bind(("127.0.0.1", 9000))
-s.listen()
-conn, _ = s.accept()
-print(conn.recv(4096).decode())   # ← HTTP リクエストの生テキストが見える
-conn.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello")
-conn.close()</code></pre>
-      <p>
-        実務でこんな低レイヤから書くことはまずありません。
-        以降は Python 標準の <code>http.server</code> がこの面倒を肩代わりしてくれる前提で進めます。
-        「<em>HTTP は結局テキスト、その下は TCP のバイト列</em>」 — これだけ覚えておけば十分です。
-      </p>
     </details>
 
     <!-- =============================================================== -->
-    <h2>準備 — サーバを <code>serve(App)</code> 1 行で起動できるようにする</h2>
+    <h2>1.2 PowerShell の編集ループ</h2>
     <p>
-      Notebook 内で何度もサーバを立てたり止めたりするので、それを 1 行で扱えるヘルパを置きます。
-      これは「書き加えていくサーバ本体」ではなく、Colab で快適に試行錯誤するための周辺ツールです。
+      この章ではこの作業を何度も繰り返します:
+    </p>
+    <ol>
+      <li>VS Code (またはお好みのエディタ) で <code>myserver.py</code> を編集して保存</li>
+      <li><strong>PowerShell ターミナル A</strong>: <code>python myserver.py</code> でサーバ起動 → 起動メッセージを確認</li>
+      <li><strong>PowerShell ターミナル B</strong>: <code>curl http://localhost:8000/...</code> や Bruno で叩く</li>
+      <li>変更したら、 ターミナル A で <kbd>Ctrl+C</kbd> → 上矢印キー → <kbd>Enter</kbd> でサーバ再起動</li>
+    </ol>
+
+    <p>
+      まずは Ch.0 で作った作業フォルダで、 空の <code>myserver.py</code> を用意します:
     </p>
 
     <div class="colab-step">
-      <span class="step-tag">📒 セル 1-A</span>
-      Colab で <strong>+ コード</strong> を押し、新しいセルを追加。コード右上の <strong>Copy</strong>
-      ボタンでコピーして貼り付け、 <kbd>Shift + Enter</kbd>。
-<pre><code class="language-python">import threading, urllib.request, urllib.error, json, time
-from http.server import HTTPServer
+      <span class="step-tag">📒 準備 — myserver.py を作る</span>
+<pre><code class="language-powershell">cd $HOME\gacha_workspace
+New-Item myserver.py -ItemType File -Force
 
-# 直前に立てたサーバを格納する。新しいサーバを立てる前に止めるため。
-_running = []
+# VS Code がインストールされていれば
+code myserver.py
+# (もしくはエクスプローラーで開いて、 メモ帳・サクラエディタなどで編集)</code></pre>
+    </div>
 
-def serve(handler_cls, port=8000):
-    """前のサーバを止め、handler_cls で新しいサーバを起動する。"""
-    while _running:
-        s = _running.pop()
-        s.shutdown()             # serve_forever ループを止める
-        try: s.server_close()    # ソケットを解放してポートを空ける
-        except Exception: pass
-    server = HTTPServer(("127.0.0.1", port), handler_cls)
-    _running.append(server)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    time.sleep(0.1)
-    print(f"listening on http://127.0.0.1:{port}")
-    return server
+    <div class="callout note">
+      <span class="label">📝 PowerShell を 2 つ開く</span>
+      作業中はサーバを動かしっぱなしにするので、 <strong>ターミナル A (サーバ用)</strong> と
+      <strong>ターミナル B (curl 用)</strong> の 2 つを開いておくと楽です。 VS Code の組み込みターミナルなら
+      右上の「+ 」 ボタンで複数開けます。
+    </div>
 
-def hit(method, path, payload=None, port=8000):
-    """サーバに HTTP リクエストを 1 回投げて、(status, body文字列) を返す。"""
-    req = urllib.request.Request(
-        f"http://127.0.0.1:{port}{path}",
-        data=json.dumps(payload).encode() if payload is not None else None,
-        headers={"Content-Type": "application/json"} if payload is not None else {},
-        method=method)
-    try:
-        r = urllib.request.urlopen(req)
-        return r.status, r.read().decode()
-    except urllib.error.HTTPError as e:
-        return e.code, e.read().decode()
+    <!-- =============================================================== -->
+    <h2>1.3 ステップ 1 — TCP socket で HTTP 風応答</h2>
+    <p>
+      まずは Python 標準の <code>socket</code> モジュールだけで、 <strong>HTTP 風のテキスト</strong>を
+      手書きして返すサーバを作ってみます。 行数で言うと <strong>20 行ちょっと</strong>。
+      これで「HTTP は単なるテキスト」 を体感できます。
+    </p>
 
-print("OK: serve() / hit() ready")</code></pre>
+    <div class="colab-step">
+      <span class="step-tag">📝 myserver.py — TCP ソケットで HTTP 風応答</span>
+<pre><code class="language-python"># myserver.py — ステップ 1: TCP ソケットで HTTP 風応答
+import socket
+
+def main():
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # 同じポートで再起動できるようにする小ワザ
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind(("127.0.0.1", 8000))
+    sock.listen()
+    print("listening on http://127.0.0.1:8000  (Ctrl+C で終了)")
+
+    while True:
+        conn, addr = sock.accept()
+        data = conn.recv(4096)
+        print("---- received ----")
+        print(data.decode(errors="replace"))
+        print("---- end -----")
+
+        body = b"hello, raw tcp\n"
+        response = (
+            b"HTTP/1.1 200 OK\r\n"
+            b"Content-Type: text/plain; charset=utf-8\r\n"
+            b"Content-Length: " + str(len(body)).encode() + b"\r\n"
+            b"\r\n"
+            + body
+        )
+        conn.sendall(response)
+        conn.close()
+
+if __name__ == "__main__":
+    main()</code></pre>
+    </div>
+
+    <div class="colab-step">
+      <span class="step-tag">▶️ 起動 (ターミナル A) と 叩く (ターミナル B)</span>
+<pre><code class="language-powershell"># ターミナル A
+python myserver.py
+# → listening on http://127.0.0.1:8000  (Ctrl+C で終了)
+
+# ターミナル B (別の PowerShell ウィンドウ)
+curl http://127.0.0.1:8000/
+
+# Windows の curl は -v で詳細表示
+curl.exe -v http://127.0.0.1:8000/</code></pre>
     </div>
 
     <div class="expected-output">
       <span class="lbl">✅ 期待される出力</span>
-<pre><code>OK: serve() / hit() ready</code></pre>
+<pre><code># ターミナル B 側 (curl の応答):
+hello, raw tcp
+
+# ターミナル A 側に、 curl が送ってきたリクエスト全文が表示される:
+---- received ----
+GET / HTTP/1.1
+Host: 127.0.0.1:8000
+User-Agent: curl/8.x.x
+Accept: */*
+
+---- end -----</code></pre>
     </div>
 
-    <!-- =============================================================== -->
-    <h2>Step 1 — 最小の HTTP サーバを 1 つ建てる</h2>
+    <h3>💡 解説</h3>
+    <ul>
+      <li><strong>HTTP は本当にテキスト</strong>: ターミナル A 側に出ているのは、 ブラウザや curl が
+          送ってきた <em>生のテキスト</em>。 これを Python が受け取って、 同じくテキストの形式で返事を返している</li>
+      <li><strong>改行は <code>\r\n</code></strong>: HTTP の仕様では行末は CRLF (キャリッジリターン + ラインフィード)。
+          Python ソースコード上は <code>\r\n</code> と書く</li>
+      <li><strong>ヘッダと本文は空行で区切る</strong>: <code>b"\r\n"</code> だけの行が「ヘッダ終わり、 ここから本文」 の合図</li>
+    </ul>
+
+    <h3>📝 自分でちょっと変えてみる</h3>
+    <ul>
+      <li><code>body</code> を <code>b"\xe3\x81\x93\xe3\x82\x93\xe3\x81\xab\xe3\x81\xa1\xe3\x81\xaf\n"</code> (=「こんにちは」 の UTF-8) にしてみる。 curl の出力で日本語が出る?</li>
+      <li><code>HTTP/1.1 200 OK</code> を <code>HTTP/1.1 418 I'm a teapot</code> にしてみる。 <code>curl -v</code> で見るとステータス行が変わっている</li>
+    </ul>
+
     <p>
-      まず動くサーバを建てます。 行数で言うと <strong>10 行ちょっと</strong>。
-      ここから機能を足していきます。
+      この実装で困るのは、 <em>HTTP リクエストのパースを完全に自分でやる必要がある</em>こと。
+      ヘッダの分解、 メソッド判定、 パス解釈、 本文の読み取りなど、 全部書くのは大変です。
+      次のステップで Python 標準の <code>http.server</code> に乗り換え、 そういう面倒を肩代わりしてもらいます。
+    </p>
+
+    <!-- =============================================================== -->
+    <h2>1.4 ステップ 2 — http.server に乗り換え</h2>
+    <p>
+      Python 標準の <code>http.server</code> モジュールにある <code>BaseHTTPRequestHandler</code> を継承し、
+      <code>do_GET</code> をオーバーライドすれば、 メソッドとパスのパースは全部やってくれます。
+      ステップ 1 と同じ「Hello」 を、 たった半分以下の行数で書き直します。
     </p>
 
     <div class="colab-step">
-      <span class="step-tag">📒 セル 1-B</span>
-<pre><code class="language-python">from http.server import BaseHTTPRequestHandler
+      <span class="step-tag">📝 myserver.py — http.server に乗り換え</span>
+<pre><code class="language-python"># myserver.py — ステップ 2: http.server で最小の Hello サーバ
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 class App(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -243,16 +290,31 @@ class App(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
-    def log_message(self, fmt, *args): pass  # ログ抑制
 
-serve(App)
-print(hit("GET", "/"))</code></pre>
+def main():
+    addr = ("127.0.0.1", 8000)
+    print(f"listening on http://{addr[0]}:{addr[1]}  (Ctrl+C で終了)")
+    HTTPServer(addr, App).serve_forever()
+
+if __name__ == "__main__":
+    main()</code></pre>
+    </div>
+
+    <div class="colab-step">
+      <span class="step-tag">▶️ 動かす</span>
+<pre><code class="language-powershell"># ターミナル A: 前のサーバが動いていたら Ctrl+C で止めてから
+python myserver.py
+
+# ターミナル B
+curl http://127.0.0.1:8000/
+curl http://127.0.0.1:8000/anything
+
+# ブラウザで http://127.0.0.1:8000/ を開いても OK</code></pre>
     </div>
 
     <div class="expected-output">
       <span class="lbl">✅ 期待される出力</span>
-<pre><code>listening on http://127.0.0.1:8000
-(200, 'hello, http\n')</code></pre>
+<pre><code>hello, http</code></pre>
     </div>
 
     <h3>💡 解説</h3>
@@ -260,113 +322,97 @@ print(hit("GET", "/"))</code></pre>
       <li><code>BaseHTTPRequestHandler</code> をサブクラス化し、 <code>do_GET</code> をオーバーライドすれば
           GET 全般を受けられる (POST なら <code>do_POST</code>)</li>
       <li>呼び出し順は <strong>send_response → send_header → end_headers → wfile.write</strong>
-          を必ず守る。これがイントロで見た「ヘッダ + 空行 + 本文」 の組み立て</li>
-      <li>本文は bytes (<code>b"..."</code>) なので、文字列を送るときは <code>.encode()</code> が必要</li>
+          を必ず守る。 これがイントロで見た「ヘッダ + 空行 + 本文」 の組み立て</li>
+      <li>本文は bytes (<code>b"..."</code>) なので、 文字列を送るときは <code>.encode()</code> が必要</li>
+      <li>サーバ起動中はターミナル A にアクセスログが出る (例: <code>127.0.0.1 - - [...] "GET / HTTP/1.1" 200 -</code>)</li>
     </ul>
 
     <h3>📝 自分でちょっと変えてみる</h3>
     <ul>
-      <li><code>body = b"こんにちは\n"</code> に変えて再実行 (App を書き換えて Shift+Enter)</li>
-      <li><code>self.send_response(200)</code> を <code>418</code> (I'm a teapot) にしてみる</li>
+      <li><code>Content-Type</code> を <code>text/html</code> にして、 body を <code>b"&lt;h1&gt;hello&lt;/h1&gt;"</code> に。 ブラウザで開くと太字の見出しになる</li>
+      <li><code>send_response(200)</code> を <code>404</code> にして、 <code>curl -i</code> で見るとステータス行が変わっている</li>
     </ul>
 
     <!-- =============================================================== -->
-    <h2>Step 2 — Content-Type と ステータスコードで遊ぶ</h2>
-    <p>
-      同じサーバの <code>do_GET</code> を書き換えて、HTML を返したり、ステータスを変えたりします。
-      <strong>1 つの HTTP の塊が、ヘッダ次第でブラウザにどう解釈されるか</strong> を体感する回。
-    </p>
-
-    <div class="colab-step">
-      <span class="step-tag">📒 セル 1-C</span>
-<pre><code class="language-python">class App(BaseHTTPRequestHandler):
-    def do_GET(self):
-        body = "<h1>こんにちは</h1><p>HTML として描画されます</p>".encode("utf-8")
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-    def log_message(self, fmt, *args): pass
-
-serve(App)
-status, body = hit("GET", "/")
-print(status)
-print(body)</code></pre>
-    </div>
-
-    <div class="expected-output">
-      <span class="lbl">✅ 期待される出力</span>
-<pre><code>listening on http://127.0.0.1:8000
-200
-&lt;h1&gt;こんにちは&lt;/h1&gt;&lt;p&gt;HTML として描画されます&lt;/p&gt;</code></pre>
-    </div>
-
-    <h3>💡 解説</h3>
-    <ul>
-      <li>同じバイト列でも <code>Content-Type</code> が <code>text/plain</code> なら文字列、
-          <code>text/html</code> ならタグとして解釈される。 ヘッダはクライアントへの「読み方の指示書」</li>
-      <li>ブラウザで <code>http://localhost:8000</code> を開けばタグが描画される
-          (Colab の場合は次セクションの「Colab から外に出す」で解説)</li>
-    </ul>
-
-    <h3>📝 自分でちょっと変えてみる</h3>
-    <ul>
-      <li><code>send_response(200)</code> を <code>404</code> にしてみる → <code>hit()</code> の status が変わる</li>
-      <li><code>418</code> (I'm a teapot) で <code>(418, '...')</code> が返ることを確認</li>
-    </ul>
-
-    <!-- =============================================================== -->
-    <h2>Step 3 — パス分岐を増やす</h2>
+    <h2>1.5 ステップ 3 — パスごとに違う応答 (ルーティング)</h2>
     <p>
       <code>self.path</code> を見て、 <code>/</code> なのか <code>/api/health</code> なのかで応答を変える。
-      ルーティングの素朴版です。
+      ルーティングの素朴版です。 同時に、 文字列を返すヘルパ <code>_text</code> と
+      JSON を返すヘルパ <code>_json</code> も用意して、 <code>do_GET</code> 本体をスッキリさせます。
     </p>
 
     <div class="colab-step">
-      <span class="step-tag">📒 セル 1-D</span>
-<pre><code class="language-python">from urllib.parse import urlparse, parse_qs
+      <span class="step-tag">📝 myserver.py — パス分岐 + ヘルパ</span>
+<pre><code class="language-python"># myserver.py — ステップ 3: パスごとに分岐 + JSON 返却
 import json
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import urlparse, parse_qs
 
 class App(BaseHTTPRequestHandler):
     def do_GET(self):
-        url = urlparse(self.path); path = url.path; q = parse_qs(url.query)
+        url = urlparse(self.path)
+        path = url.path
+        query = parse_qs(url.query)
+
         if path == "/":
             return self._text(200, "hello, http\n")
         if path == "/api/health":
             return self._json(200, {"status": "ok"})
         if path == "/api/echo":
-            return self._json(200, {"you_said": q.get("msg", [""])[0]})
+            msg = query.get("msg", [""])[0]
+            return self._json(200, {"you_said": msg})
         return self._json(404, {"error": "Not Found", "path": path})
 
-    def _text(self, status, body):
-        b = body.encode("utf-8")
+    # ---- helpers --------------------------------------------------------
+    def _text(self, status, s):
+        b = s.encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
         self.send_header("Content-Length", str(len(b)))
-        self.end_headers(); self.wfile.write(b)
+        self.end_headers()
+        self.wfile.write(b)
 
     def _json(self, status, obj):
         b = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(b)))
-        self.end_headers(); self.wfile.write(b)
+        self.end_headers()
+        self.wfile.write(b)
 
-    def log_message(self, fmt, *args): pass
+def main():
+    addr = ("127.0.0.1", 8000)
+    print(f"listening on http://{addr[0]}:{addr[1]}  (Ctrl+C で終了)")
+    HTTPServer(addr, App).serve_forever()
 
-serve(App)
-for path in ["/", "/api/health", "/api/echo?msg=hello%20world", "/missing"]:
-    print(f"{path:35s} -> {hit('GET', path)}")</code></pre>
+if __name__ == "__main__":
+    main()</code></pre>
+    </div>
+
+    <div class="colab-step">
+      <span class="step-tag">▶️ 叩いてみる (ターミナル B)</span>
+<pre><code class="language-powershell">curl http://127.0.0.1:8000/
+curl http://127.0.0.1:8000/api/health
+curl "http://127.0.0.1:8000/api/echo?msg=hello world"
+curl -i http://127.0.0.1:8000/missing    # -i でステータス行も表示</code></pre>
     </div>
 
     <div class="expected-output">
       <span class="lbl">✅ 期待される出力</span>
-<pre><code>listening on http://127.0.0.1:8000
-/                                   -> (200, 'hello, http\n')
-/api/health                         -> (200, '{"status": "ok"}')
-/api/echo?msg=hello%20world         -> (200, '{"you_said": "hello world"}')
-/missing                            -> (404, '{"error": "Not Found", "path": "/missing"}')</code></pre>
+<pre><code># GET /
+hello, http
+
+# GET /api/health
+{"status": "ok"}
+
+# GET /api/echo?msg=hello world
+{"you_said": "hello world"}
+
+# GET /missing (-i 付き)
+HTTP/1.0 404 ...
+Content-Type: application/json; charset=utf-8
+...
+{"error": "Not Found", "path": "/missing"}</code></pre>
     </div>
 
     <h3>💡 解説</h3>
@@ -374,13 +420,14 @@ for path in ["/", "/api/health", "/api/echo?msg=hello%20world", "/missing"]:
       <li><code>urlparse(self.path)</code> でパスとクエリ文字列を分ける。
           <code>parse_qs</code> でクエリを <code>{"msg": ["hello world"]}</code> のように辞書化</li>
       <li><code>_text</code> / <code>_json</code> のような共通ヘルパを切り出すと、
-          ハンドラの中身が「ロジック」だけになって読みやすい</li>
-      <li>Step 1〜2 でやったヘッダ書きの儀式が、 <code>_json</code> 一行に圧縮されている</li>
+          ハンドラの中身が「ロジック」 だけになって読みやすい</li>
+      <li>ステップ 1〜2 でやったヘッダ書きの儀式が、 <code>_json</code> 一行に圧縮されている</li>
     </ul>
 
     <h3>📝 自分でちょっと変えてみる</h3>
     <ul>
-      <li><code>/api/time</code> を増やして、現在時刻 (<code>__import__('datetime').datetime.utcnow().isoformat()</code>) を返す</li>
+      <li><code>/api/time</code> を増やして、 現在時刻
+          (<code>__import__('datetime').datetime.utcnow().isoformat()</code>) を返す</li>
       <li><code>/api/echo</code> で <code>msg</code> が空のとき 400 を返す</li>
     </ul>
 
@@ -407,35 +454,14 @@ for path in ["/", "/api/health", "/api/echo?msg=hello%20world", "/missing"]:
         <li><code>{ "<em>キー</em>": <em>値</em>, ... }</code> = <strong>オブジェクト</strong>
             (キーは必ず文字列)</li>
       </ul>
-      <p>つまり「ネストできるリスト/辞書 + 4 種のリテラル」 だけ。 これだけで世界中のあらゆる構造化データが表現されています。</p>
-
-      <h4>JSON が広く使われている理由</h4>
-      <ul>
-        <li><strong>軽い</strong>: XML より圧倒的に冗長性が少ない (タグ閉じが要らない)</li>
-        <li><strong>言語非依存</strong>: ほぼすべての言語に標準/準標準のパーサーがある (Python は <code>json</code>、 JS はそのまま)</li>
-        <li><strong>機械可読 + 人間可読</strong>: そのままターミナルに出して読める</li>
-        <li><strong>web 黎明期からの慣性</strong>: REST API の事実上の標準応答フォーマット</li>
-      </ul>
-
-      <h4>使われどころ</h4>
-      <ul>
-        <li><strong>HTTP API のリクエスト/レスポンスボディ</strong>: 本教材の主役</li>
-        <li>設定ファイル (例: <code>package.json</code>, VS Code の <code>settings.json</code>)。
-            ただし「コメントが書けない」 ため、 <strong>JSON5</strong> や <strong>JSONC</strong> といった
-            派生形式が使われることもある</li>
-        <li>NoSQL の格納形式 (例: MongoDB BSON、 PostgreSQL の <code>jsonb</code> 列)</li>
-        <li>JWT (JSON Web Token) — 認証で使われる短いトークン形式</li>
-      </ul>
 
       <h4>JSON でハマりやすい所</h4>
       <ul>
         <li><strong>シングルクォート不可</strong>: <code>{'a': 1}</code> は<strong>不正な JSON</strong>。
             必ず <code>{"a": 1}</code></li>
         <li><strong>末尾カンマ不可</strong>: <code>[1, 2, 3,]</code> は不正</li>
-        <li><strong>コメント不可</strong>: <code>// hello</code> や <code>/* ... */</code> は不正</li>
+        <li><strong>コメント不可</strong>: <code>// hello</code> は不正</li>
         <li><strong>キーは必ず文字列</strong>: <code>{1: "a"}</code> は不正 (<code>{"1": "a"}</code> なら OK)</li>
-        <li><strong>整数の精度</strong>: 仕様上は無限精度だが、 多くの実装は IEEE 754 double の範囲
-            (≈ 2<sup>53</sup>) を超えると桁落ちする</li>
         <li><strong>日時型は無い</strong>: ISO 8601 文字列 (<code>"2026-04-27T06:30:00Z"</code>) で渡すのが慣例</li>
       </ul>
 
@@ -451,45 +477,49 @@ json.loads('{"a": 1}')                          # → {"a": 1}  (Python の dict
       </p>
     </details>
 
-    <h2>Step 4 — POST で JSON を受け取る</h2>
+    <!-- =============================================================== -->
+    <h2>1.6 ステップ 4 — POST で JSON を受け取る + Bruno を使う</h2>
     <p>
       ガチャを引く API は POST します (= 副作用がある操作)。
-      <code>do_POST</code> を増やして、本文の JSON を読み取って返事を作ります。
+      <code>do_POST</code> を増やして、 本文の JSON を読み取って返事を作ります。
     </p>
 
     <div class="callout tip">
-      <span class="label">💻 ブラウザ + REST クライアントで叩く tip</span>
+      <span class="label">💻 Bruno を初めて使う</span>
       <p>
-        ここまでは <code>hit()</code> ヘルパ (= Python から Python サーバを叩く) で動作確認していました。
-        <strong>本物のクライアント</strong>から叩いてみると <em>「サーバを建てている感</em>」 が一気に出ます:
+        ここまでは <code>curl</code> で叩いてきました。 GET だけなら curl で十分ですが、
+        POST + JSON ボディを毎回打つのは面倒です。 Ch.0 で入れた Bruno を使います。
       </p>
-      <ul>
-        <li><strong>GET</strong>: ブラウザの新しいタブで <code>http://localhost:8000/api/health</code> を開けばOK
-            (Colab で動かしている場合は次の行へ)</li>
-        <li><strong>Colab の場合は外部公開が必要</strong>: 新しいセルに
-          <pre><code class="language-python">from google.colab.output import serve_kernel_port_as_public
-print(serve_kernel_port_as_public(8000))</code></pre>
-          を貼って実行 → 公開 URL が出てくる → ブラウザで開く</li>
-        <li><strong>POST は専用ツール</strong>が要る (ブラウザの URL バーは GET しかできない):
-          <ul>
-            <li><a href="https://hoppscotch.io/" target="_blank">Hoppscotch</a> — Web ブラウザで動く、 登録不要、 一番手軽</li>
-            <li><a href="https://www.postman.com/" target="_blank">Postman</a> — 業界標準のデスクトップアプリ</li>
-            <li><a href="https://insomnia.rest/" target="_blank">Insomnia</a> — Postman より軽量</li>
-            <li><code>!curl -X POST ...</code> — Colab セル内で完結する手段</li>
-          </ul>
-        </li>
-      </ul>
-      <p>これらは Ch.3  で本格的に活躍します。 ここでは「あ、 そういうツールがあるんだ」 程度で大丈夫。</p>
+      <ol>
+        <li>Bruno を起動 → 上のメニューから <strong>Collection → Create Collection</strong></li>
+        <li>名前: <code>gacha_local</code>、 場所: <code>$HOME\gacha_workspace\bruno</code> にしておく</li>
+        <li>左ペインで右クリック → <strong>New Request</strong> → 名前: <code>POST sum</code></li>
+        <li>メソッド: <strong>POST</strong>、 URL: <code>http://127.0.0.1:8000/api/sum</code></li>
+        <li>下の <strong>Body</strong> タブ → <strong>JSON</strong> を選択 → <code>{"a": 1, "b": 2}</code> を入力</li>
+        <li>右上の <strong>Send</strong> ボタン</li>
+      </ol>
+      <p>
+        収集したリクエストは <code>$HOME\gacha_workspace\bruno\</code> 配下に
+        <code>.bru</code> という<strong>テキストファイル</strong>として保存されます。
+        git にコミットしてチームで共有することもできます。
+      </p>
     </div>
 
     <div class="colab-step">
-      <span class="step-tag">📒 セル 1-E</span>
-<pre><code class="language-python">class App(BaseHTTPRequestHandler):
+      <span class="step-tag">📝 myserver.py — POST + JSON 受信</span>
+<pre><code class="language-python"># myserver.py — ステップ 4: POST で JSON を受け取る
+import json
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import urlparse, parse_qs
+
+class App(BaseHTTPRequestHandler):
     def do_GET(self):
-        url = urlparse(self.path); path = url.path; q = parse_qs(url.query)
+        url = urlparse(self.path)
+        path = url.path
+        query = parse_qs(url.query)
         if path == "/":              return self._text(200, "hello, http\n")
         if path == "/api/health":    return self._json(200, {"status": "ok"})
-        if path == "/api/echo":      return self._json(200, {"you_said": q.get("msg", [""])[0]})
+        if path == "/api/echo":      return self._json(200, {"you_said": query.get("msg", [""])[0]})
         return self._json(404, {"error": "Not Found", "path": path})
 
     def do_POST(self):
@@ -501,8 +531,9 @@ print(serve_kernel_port_as_public(8000))</code></pre>
             if "a" not in body or "b" not in body:
                 return self._json(400, {"error": "a と b が必要"})
             return self._json(200, {"answer": body["a"] + body["b"]})
-        return self._json(404, {"error": "Not Found"})
+        return self._json(404, {"error": "Not Found", "path": path})
 
+    # ---- helpers --------------------------------------------------------
     def _read_json(self):
         n = int(self.headers.get("Content-Length", "0"))
         raw = self.rfile.read(n) if n else b""
@@ -511,52 +542,79 @@ print(serve_kernel_port_as_public(8000))</code></pre>
         except json.JSONDecodeError:
             return {}
 
-    def _text(self, status, body):
-        b = body.encode("utf-8")
+    def _text(self, status, s):
+        b = s.encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
-        self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+        self.send_header("Content-Length", str(len(b)))
+        self.end_headers()
+        self.wfile.write(b)
 
     def _json(self, status, obj):
         b = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+        self.send_header("Content-Length", str(len(b)))
+        self.end_headers()
+        self.wfile.write(b)
 
-    def log_message(self, fmt, *args): pass
+def main():
+    addr = ("127.0.0.1", 8000)
+    print(f"listening on http://{addr[0]}:{addr[1]}  (Ctrl+C で終了)")
+    HTTPServer(addr, App).serve_forever()
 
-serve(App)
+if __name__ == "__main__":
+    main()</code></pre>
+    </div>
 
-# Step 3 でできていたことは引き続き動く (= リグレッションテスト)
-print("GET  / health:", hit("GET", "/api/health"))
+    <div class="colab-step">
+      <span class="step-tag">▶️ Bruno で叩く (もしくは curl)</span>
+<pre><code class="language-powershell"># Bruno: 上で作った "POST sum" の Send を押す
+# → 200 + {"answer": 3}
 
-# 新しく増やした POST
-print("POST sum 1+2 :", hit("POST", "/api/sum",  {"a": 1, "b": 2}))
-print("POST sum bad :", hit("POST", "/api/sum",  {"a": 1}))
-print("POST echo    :", hit("POST", "/api/echo", {"hi": "there"}))</code></pre>
+# curl で同じことをする場合
+curl -X POST http://127.0.0.1:8000/api/sum `
+     -H "Content-Type: application/json" `
+     -d '{\"a\": 1, \"b\": 2}'
+
+# ステップ 3 で動いていた GET も引き続き動く (= リグレッションテスト)
+curl http://127.0.0.1:8000/api/health</code></pre>
+    </div>
+
+    <div class="callout note">
+      <span class="label">📝 PowerShell で curl の引用符</span>
+      PowerShell の <code>curl</code> は (Windows のエイリアスで) 内部的には <code>Invoke-WebRequest</code>
+      になります。 真の curl を使いたい場合は <code>curl.exe</code> と明示するか、
+      下のように <code>Invoke-RestMethod</code> を使うのが Windows 流:
+<pre><code class="language-powershell">Invoke-RestMethod -Method POST `
+  -Uri http://127.0.0.1:8000/api/sum `
+  -ContentType "application/json" `
+  -Body '{"a": 1, "b": 2}'</code></pre>
+      もしくは、 上記のように <code>curl.exe</code> + <code>'{\"a\":1}'</code> で生 curl を使う。
+      どちらでも OK ですが、 <strong>本教材では検証手段として Bruno を主に使います</strong>。
     </div>
 
     <div class="expected-output">
-      <span class="lbl">✅ 期待される出力</span>
-<pre><code>listening on http://127.0.0.1:8000
-GET  / health: (200, '{"status": "ok"}')
-POST sum 1+2 : (200, '{"answer": 3}')
-POST sum bad : (400, '{"error": "a と b が必要"}')
-POST echo    : (200, '{"received": {"hi": "there"}}')</code></pre>
+      <span class="lbl">✅ 期待される出力 (Bruno のレスポンス画面)</span>
+<pre><code>Status: 200 OK
+Body:
+{
+  "answer": 3
+}</code></pre>
     </div>
 
     <h3>💡 解説</h3>
     <ul>
       <li>本文の長さは <code>Content-Length</code> ヘッダから読み、 <code>self.rfile.read(n)</code>
-          で bytes 取得 → JSON にデコード。これが Web API の必須スキル</li>
-      <li><strong>大事な観察</strong>: Step 3 で動いていた GET は今もそのまま動く。
-          機能を足しても以前の機能が壊れていないか、毎回確かめると安心</li>
+          で bytes 取得 → JSON にデコード。 これが Web API の必須スキル</li>
+      <li><strong>大事な観察</strong>: ステップ 3 で動いていた GET は今もそのまま動く。
+          機能を足しても以前の機能が壊れていないか、 毎回確かめると安心</li>
     </ul>
 
     <h3>📝 自分でちょっと変えてみる</h3>
     <ul>
-      <li><code>/api/sum</code> で <code>a, b</code> が数値でなかったら 400 を返す</li>
-      <li><code>/api/multiply</code> を追加して、 <code>{"a":3, "b":4}</code> で <code>{"answer": 12}</code></li>
+      <li><code>/api/sum</code> で <code>a, b</code> が数値でなかったら 400 を返すよう厳しくする</li>
+      <li>Bruno で <code>{"a": "x", "b": 2}</code> を送って 400 が返ることを確認</li>
     </ul>
 
     <!-- =============================================================== -->
@@ -564,8 +622,7 @@ POST echo    : (200, '{"received": {"hi": "there"}}')</code></pre>
       <summary>📚 コラム: 「デコレータ」 ってなに?</summary>
       <p>
         次のステップで <code>@route("GET", "/api/health")</code> という見慣れない記法が出てきます。
-        これを使う前に、 <strong>デコレータ</strong> という概念をおさえます。 2 段階あります:
-        Python の言語機能としてのデコレータと、 デザインパターンとしてのデコレータ。
+        これを使う前に、 <strong>デコレータ</strong> という概念をおさえます。
       </p>
 
       <h4>① Python のデコレータ — 「関数を関数に変換する」 構文</h4>
@@ -612,67 +669,48 @@ def hello(name):
 
 @route("GET", "/api/health")
 def health(h):
-    h._json(200, {"status": "ok"})
-
-# これは以下と等価:
-# def health(h): ...
-# health = route("GET", "/api/health")(health)
-#                ^^^^^^^^^^^^^^^^^^^^^^ ← deco を返す
-#                                      ^^^^^^^^ ← health を deco に通して、 そのまま返す</code></pre>
+    h._json(200, {"status": "ok"})</code></pre>
 
       <p>
         ここで起きているのは「<strong>関数 health を、 ROUTES 辞書に登録するついでに、 中身は変えずに返す</strong>」。
-        次のステップで使う <code>@route</code> はまさにこのパターンです。
+        典型例は Flask の <code>@app.route(...)</code>、 FastAPI の <code>@app.get(...)</code>、
+        Django の <code>@login_required</code>、 pytest の <code>@pytest.fixture</code> など。
       </p>
-
-      <h4>③ デザインパターンとしての「デコレータパターン」</h4>
-      <p>
-        OOP の世界の<strong>デコレータパターン</strong>は別物 (ですが似ている)。
-        既存のオブジェクトに新しい振る舞いを「ラップ」 して足す GoF パターンの 1 つで、
-        例えば「<em>BufferedReader が FileReader をラップして読み込みバッファ機能を足す</em>」 ような
-        構造を指します。
-      </p>
-      <p>
-        Python のデコレータ構文 (@) は<strong>関数を別の関数でラップする</strong>使い方が多く、
-        パターンとしてのデコレータと精神的には同じ (= 既存のものを包んで新しい振る舞いを足す)。
-        ただし<strong>名前が同じだけで別概念</strong> として理解しておくと、 文脈で混同しません。
-      </p>
-
-      <h4>もっと知るには</h4>
-      <ul>
-        <li>Python 公式ドキュメント — <a href="https://docs.python.org/ja/3/glossary.html#term-decorator" target="_blank">デコレータ用語</a></li>
-        <li><code>functools.wraps</code> — 装飾後の関数の <code>__name__</code> や docstring を元に保つお作法</li>
-        <li>典型例: Flask の <code>@app.route(...)</code>、 FastAPI の <code>@app.get(...)</code>、
-            Django の <code>@login_required</code>、 pytest の <code>@pytest.fixture</code></li>
-      </ul>
     </details>
 
-    <h2>Step 5 — リファクタ: ルーター辞書にまとめる</h2>
+    <!-- =============================================================== -->
+    <h2>1.7 ステップ 5 — リファクタ: ルーター辞書 + デコレータ</h2>
     <p>
       ハンドラが増えると <code>do_GET</code> / <code>do_POST</code> 内の if/elif の山になります。
       <code>(method, path) → handler</code> の<strong>辞書</strong>でディスパッチする形に書き換えます。
-      <strong>機能は変わらない</strong>ので、Step 4 のテストがそのままパスすれば成功です。
-    </p>
-    <p>
-      ここで初めて <strong>デコレータ</strong> (<code>@route("GET", ...)</code>) が登場します。
-      上のコラムを先に開いておくと、 これから書くコードがすんなり読めます。
+      <strong>機能は変わらない</strong>ので、 ステップ 4 のテストがそのままパスすれば成功です。
     </p>
 
     <div class="colab-step">
-      <span class="step-tag">📒 セル 1-F</span>
-<pre><code class="language-python">ROUTES = {}
+      <span class="step-tag">📝 myserver.py — ルーター辞書 + デコレータ</span>
+<pre><code class="language-python"># myserver.py — ステップ 5: ルーター辞書 + @route デコレータ
+import json
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import urlparse, parse_qs
+
+# (method, path) -> handler 関数 の辞書
+ROUTES = {}
 
 def route(method, path):
+    """関数をルートとして ROUTES に登録するデコレータ。"""
     def deco(fn):
         ROUTES[(method.upper(), path)] = fn
         return fn
     return deco
 
+# ---- ルートの定義 -----------------------------------------------------------
 @route("GET", "/")
-def root(h): h._text(200, "hello, http\n")
+def root(h):
+    h._text(200, "hello, http\n")
 
 @route("GET", "/api/health")
-def health(h): h._json(200, {"status": "ok"})
+def health(h):
+    h._json(200, {"status": "ok"})
 
 @route("GET", "/api/echo")
 def echo_get(h):
@@ -691,6 +729,7 @@ def add(h):
     h._json(200, {"answer": body["a"] + body["b"]})
 
 
+# ---- ディスパッチ: メソッド + パスで ROUTES を引いて呼ぶだけ ---------------
 class App(BaseHTTPRequestHandler):
     def do_GET(self):  self._dispatch("GET")
     def do_POST(self): self._dispatch("POST")
@@ -699,8 +738,10 @@ class App(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         handler = ROUTES.get((method, path))
         if handler is None:
-            return self._json(404, {"error": "Not Found", "path": path,
-                                    "available": [f"{m} {p}" for (m, p) in sorted(ROUTES)]})
+            return self._json(404, {
+                "error": "Not Found", "path": path,
+                "available": [f"{m} {p}" for (m, p) in sorted(ROUTES)],
+            })
         handler(self)
 
     def _read_json(self):
@@ -711,42 +752,49 @@ class App(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             return {}
 
-    def _text(self, status, body):
-        b = body.encode("utf-8")
+    def _text(self, status, s):
+        b = s.encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
-        self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+        self.send_header("Content-Length", str(len(b)))
+        self.end_headers()
+        self.wfile.write(b)
 
     def _json(self, status, obj):
         b = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+        self.send_header("Content-Length", str(len(b)))
+        self.end_headers()
+        self.wfile.write(b)
 
-    def log_message(self, fmt, *args): pass
+def main():
+    addr = ("127.0.0.1", 8000)
+    print(f"listening on http://{addr[0]}:{addr[1]}  (Ctrl+C で終了)")
+    print("ルート一覧:")
+    for (m, p) in sorted(ROUTES):
+        print(f"  {m:5s} {p}")
+    HTTPServer(addr, App).serve_forever()
 
-serve(App)
-
-# Step 4 でできていたこと一式が、リファクタ後も同じく動くこと
-print("GET  /            :", hit("GET",  "/"))
-print("GET  /api/health  :", hit("GET",  "/api/health"))
-print("GET  /api/echo    :", hit("GET",  "/api/echo?msg=hi"))
-print("POST /api/sum 1+2 :", hit("POST", "/api/sum",  {"a": 1, "b": 2}))
-print("POST /api/sum 欠損:", hit("POST", "/api/sum",  {"a": 1}))
-print("POST /api/echo    :", hit("POST", "/api/echo", {"hello": "world"}))
-print("GET  /missing     :", hit("GET",  "/missing"))</code></pre>
+if __name__ == "__main__":
+    main()</code></pre>
     </div>
 
     <div class="expected-output">
-      <span class="lbl">✅ 期待される出力 (= Step 4 までの全機能 + 拡張された 404)</span>
-<pre><code>listening on http://127.0.0.1:8000
-GET  /            : (200, 'hello, http\n')
-GET  /api/health  : (200, '{"status": "ok"}')
-GET  /api/echo    : (200, '{"you_said": "hi"}')
-POST /api/sum 1+2 : (200, '{"answer": 3}')
-POST /api/sum 欠損: (400, '{"error": "a と b が必要"}')
-POST /api/echo    : (200, '{"received": {"hello": "world"}}')
-GET  /missing     : (404, '{"error": "Not Found", "path": "/missing", "available": ["GET /", "GET /api/echo", "GET /api/health", "POST /api/echo", "POST /api/sum"]}')</code></pre>
+      <span class="lbl">✅ 期待される出力 (= ステップ 4 までの全機能が引き続き動く)</span>
+<pre><code># ターミナル A 起動時:
+listening on http://127.0.0.1:8000  (Ctrl+C で終了)
+ルート一覧:
+  GET   /
+  GET   /api/echo
+  GET   /api/health
+  POST  /api/echo
+  POST  /api/sum
+
+# 404 のとき (例: GET /missing) はどんなルートが利用可能かまで返る
+{"error": "Not Found", "path": "/missing",
+ "available": ["GET /", "GET /api/echo", "GET /api/health",
+               "POST /api/echo", "POST /api/sum"]}</code></pre>
     </div>
 
     <h3>💡 解説</h3>
@@ -755,34 +803,66 @@ GET  /missing     : (404, '{"error": "Not Found", "path": "/missing", "available
           関数を <code>ROUTES</code> 辞書に詰めてくれる</li>
       <li><code>_dispatch</code> は単に <code>ROUTES.get((method, path))</code> でハンドラを引いて呼ぶだけ。
           if/elif の山が消えた</li>
-      <li>機能不変のリファクタは「<strong>テストでガードする</strong>」のが鉄則。
-          上のテスト一式が前と同じ結果なら、安心して進められる</li>
+      <li>機能不変のリファクタは「<strong>テストでガードする</strong>」 のが鉄則。
+          Bruno の Collection に Send をひと通り走らせて、 全部以前と同じ結果なら安心して進められる</li>
       <li>このパターンは Flask, FastAPI, Express など <strong>あらゆる Web フレームワークの中身</strong>そのもの</li>
     </ul>
 
     <!-- =============================================================== -->
-    <h2>Step 6 — 例外を JSON エラーに変える</h2>
+    <h2>1.8 ステップ 6 — 例外を JSON エラーに変える</h2>
     <p>
       ハンドラ内で <code>raise bad_request("a と b は数値で")</code> と書くだけで、
       自動的に 400 + <code>{"error": "..."}</code> が返るようにします。
-      予期しない例外は traceback を出して 500。これであなたのサーバが完成します。
+      予期しない例外は traceback を出して 500。 これであなたのサーバが完成します。
     </p>
 
     <div class="colab-step">
-      <span class="step-tag">📒 セル 1-G (= Step 1 から組み立てたサーバの完成版)</span>
-<pre><code class="language-python">import traceback
+      <span class="step-tag">📝 myserver.py — 例外ハンドリングつき完成版</span>
+<pre><code class="language-python"># myserver.py — ステップ 6 (完成版): 例外を JSON エラーに変える
+import json
+import traceback
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import urlparse, parse_qs
+
+ROUTES = {}
+
+def route(method, path):
+    def deco(fn):
+        ROUTES[(method.upper(), path)] = fn
+        return fn
+    return deco
 
 class AppError(Exception):
+    """ステータス付きの例外。 ハンドラから raise すると JSON エラーで返る。"""
     def __init__(self, status, message):
         super().__init__(message)
         self.status, self.message = status, message
 
-def bad_request(msg):  return AppError(400, msg)
-def not_found(msg="Not Found"): return AppError(404, msg)
+def bad_request(msg): return AppError(400, msg)
+def unauthorized(msg="ログインが必要です"): return AppError(401, msg)
+def not_found(msg="見つかりません"): return AppError(404, msg)
 
-# 既存の ROUTES は引き継ぐ。 /api/sum を厳しくして例外を投げるよう書き換える。
+
+# ---- ルートの定義 -----------------------------------------------------------
+@route("GET", "/")
+def root(h):
+    h._text(200, "hello, http\n")
+
+@route("GET", "/api/health")
+def health(h):
+    h._json(200, {"status": "ok"})
+
+@route("GET", "/api/echo")
+def echo_get(h):
+    msg = parse_qs(urlparse(h.path).query).get("msg", [""])[0]
+    h._json(200, {"you_said": msg})
+
+@route("POST", "/api/echo")
+def echo_post(h):
+    h._json(200, {"received": h._read_json()})
+
 @route("POST", "/api/sum")
-def add_strict(h):
+def add(h):
     body = h._read_json()
     if "a" not in body or "b" not in body:
         raise bad_request("a と b が必要")
@@ -792,6 +872,7 @@ def add_strict(h):
     h._json(200, {"answer": a + b})
 
 
+# ---- ディスパッチ ----------------------------------------------------------
 class App(BaseHTTPRequestHandler):
     def do_GET(self):  self._dispatch("GET")
     def do_POST(self): self._dispatch("POST")
@@ -806,7 +887,7 @@ class App(BaseHTTPRequestHandler):
         except AppError as e:
             self._json(e.status, {"error": e.message})
         except Exception as e:
-            traceback.print_exc()
+            traceback.print_exc()       # サーバログには全文出す
             self._json(500, {"error": "internal server error", "detail": str(e)})
 
     def _read_json(self):
@@ -817,89 +898,91 @@ class App(BaseHTTPRequestHandler):
         except json.JSONDecodeError as e:
             raise bad_request(f"invalid json: {e}")
 
-    def _text(self, status, body):
-        b = body.encode("utf-8")
+    def _text(self, status, s):
+        b = s.encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
-        self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+        self.send_header("Content-Length", str(len(b)))
+        self.end_headers()
+        self.wfile.write(b)
 
     def _json(self, status, obj):
         b = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+        self.send_header("Content-Length", str(len(b)))
+        self.end_headers()
+        self.wfile.write(b)
 
-    def log_message(self, fmt, *args): pass
+def main():
+    addr = ("127.0.0.1", 8000)
+    print(f"listening on http://{addr[0]}:{addr[1]}  (Ctrl+C で終了)")
+    print("ルート一覧:")
+    for (m, p) in sorted(ROUTES):
+        print(f"  {m:5s} {p}")
+    HTTPServer(addr, App).serve_forever()
 
-serve(App)
-
-print("通常系  :", hit("POST", "/api/sum", {"a": 10, "b": 32}))
-print("欠損    :", hit("POST", "/api/sum", {"a": 10}))
-print("型違反  :", hit("POST", "/api/sum", {"a": "x", "b": 32}))
-print("健康確認:", hit("GET",  "/api/health"))</code></pre>
+if __name__ == "__main__":
+    main()</code></pre>
     </div>
 
-    <div class="expected-output">
-      <span class="lbl">✅ 期待される出力</span>
-<pre><code>listening on http://127.0.0.1:8000
-通常系  : (200, '{"answer": 42}')
-欠損    : (400, '{"error": "a と b が必要"}')
-型違反  : (400, '{"error": "a と b は数値で"}')
-健康確認: (200, '{"status": "ok"}')</code></pre>
+    <div class="colab-step">
+      <span class="step-tag">▶️ Bruno で叩いてみる</span>
+      <p>Bruno の Collection に以下を作って Send:</p>
+      <ul>
+        <li><strong>POST /api/sum (正常)</strong>: body <code>{"a": 10, "b": 32}</code> → 200, <code>{"answer": 42}</code></li>
+        <li><strong>POST /api/sum (欠損)</strong>: body <code>{"a": 10}</code> → 400, <code>{"error": "a と b が必要"}</code></li>
+        <li><strong>POST /api/sum (型違反)</strong>: body <code>{"a": "x", "b": 32}</code> → 400, <code>{"error": "a と b は数値で"}</code></li>
+        <li><strong>POST /api/sum (壊れた JSON)</strong>: body タブの直入力で <code>{a:1}</code> (= 不正) → 400, <code>{"error": "invalid json: ..."}</code></li>
+      </ul>
     </div>
 
     <h3>💡 解説</h3>
     <ul>
       <li><code>AppError</code> は「ステータス付きの例外」 = 業務ロジック側で
-          <code>raise bad_request("...")</code> と書くと、ディスパッチ側が 400 の JSON に変換</li>
+          <code>raise bad_request("...")</code> と書くと、 ディスパッチ側が 400 の JSON に変換</li>
       <li>予期しない例外は <code>traceback.print_exc()</code> で<strong>サーバログ</strong>に流し、
           クライアントには 500 を返す。 ユーザーには内部詳細を見せない</li>
-      <li>この形にしておくと、ハンドラの中身が「ドメインロジックだけ」 になる
+      <li>この形にしておくと、 ハンドラの中身が「ドメインロジックだけ」 になる
           (バリデーションや権限チェックは <code>raise</code> 1 行で表現)</li>
     </ul>
 
     <!-- =============================================================== -->
-    <h2>仕上げ — 完成したサーバを持ち帰る</h2>
+    <h2>1.9 仕上げ — 完成した myserver.py を持ち帰る</h2>
     <p>
-      Step 6 のセルが、あなたが組み立てた HTTP サーバの完成版です。
-      <strong>第4章以降では、このコードに DB 呼び出しを足してガチャ API に進化させていきます</strong>。
+      ステップ 6 の <code>myserver.py</code> が、 あなたが組み立てた HTTP サーバの完成版です。
+      <strong>第 3 章以降では、 このコードに DB 呼び出しを足してガチャ API に進化させていきます</strong>。
     </p>
-
-    <div class="callout note">
-      <span class="label">💾 ノートブックを保存しておく</span>
-      <p>Colab メニューで <strong>「ファイル」→「ダウンロード」→「.ipynb をダウンロード」</strong>
-        を 1 度押しておくと、ここまでの全セルが手元に保存されます。
-        ローカルに切り替えるとき、または再開するときに使えます。</p>
-      <p>(任意) Step 6 のセルだけを抜き出して <code>my_server.py</code> として保存しておけば、
-        ローカルで <code>python my_server.py</code> として動かせるピュアな .py に変換できます。
-        後の章でその手順を扱います。</p>
-    </div>
 
     <div class="callout tip">
       <span class="label">🪞 答え合わせ用の参照</span>
-      <p>リポジトリには <code>server/app.py</code> という「ガチャの全 API まで仕上げた版」 が
-        置いてあります。 これは<strong>あなたと同じ全ステップを最後までこなしたあとの状態</strong>であって、
-        正しい answer = ここであなたが書き加えてきたコードです。</p>
-      <p>第4章以降、自分のコードと突き合わせながら少しずつ DB 呼び出しを足していけば、
-        最終的に <code>server/app.py</code> と同じ機能のサーバが手元に出来上がります。</p>
+      <p>
+        Ch.0 で <code>git clone</code> したリポジトリに <code>server/app.py</code> という
+        「ガチャの全 API まで仕上げた版」 があります。 これは<strong>あなたと同じ全ステップを
+        最後までこなしたあとの、 さらに先まで進んだ状態</strong>です。
+        <code>exercises/ch01/step1_socket.py</code> 〜 <code>step6_error_handling.py</code> には、
+        各ステップ終了時点のスナップショットも置いてあります。 詰まったら自分のコードと突き合わせて
+        ヒントとして使ってください。
+      </p>
     </div>
 
     <h2>本章のまとめ</h2>
     <ul>
-      <li>HTTP は「ヘッダ + 空行 + 本文」というテキストの往復。下にあるのは TCP のバイト列</li>
+      <li>HTTP は「ヘッダ + 空行 + 本文」 というテキストの往復。 下にあるのは TCP のバイト列</li>
       <li>Python 標準の <code>http.server</code> でメソッド + パスを処理できる</li>
-      <li>ルーター + 例外ハンドリングまで含めて、たった<strong>百行ちょっと</strong>でフレームワーク級の足場ができる</li>
+      <li>ルーター + 例外ハンドリングまで含めて、 たった<strong>百行ちょっと</strong>でフレームワーク級の足場ができる</li>
       <li>1 つのサーバを拡張する ≠ ステップごとに別物を作る。 組み立てたものがそのまま次の章の出発点</li>
+      <li>Bruno を使うと POST + JSON のテストが圧倒的に楽になる。 Collection は git にコミットして共有可能</li>
     </ul>
 
     <div class="pager">
       <a class="prev" href="./ch00-overview.html">
         <span class="lbl">前へ</span>
-        <span class="ttl">← 第 0 章 全体像と学び方</span>
+        <span class="ttl">← 第 0 章 全体像と環境構築</span>
       </a>
       <a class="next" href="./ch02-database.html">
         <span class="lbl">次へ</span>
-        <span class="ttl">第 2 章 データベース基礎をColabで設計 →</span>
+        <span class="ttl">第 2 章 Postgres + Docker でデータベース基礎 →</span>
       </a>
     </div>
   </main>

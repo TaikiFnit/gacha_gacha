@@ -14,27 +14,28 @@
     <div class="meta-bar">
       <span class="badge">教材</span>
       <span>所要時間: 完走で 8〜12 時間</span>
-      <span>動作環境: Google Colab (推奨) / ローカル</span>
+      <span>動作環境: Windows ローカル (Python + Docker Desktop)</span>
     </div>
 
     <h1>📘 gacha_gacha — バックエンドとデータベースを「自分の手」で覚える</h1>
 
     <p>
-      この教材は、ガチャシステムを題材にして
+      この教材は、 ガチャシステムを題材にして
       <strong>HTTP サーバー / SQL / Python</strong>
-      を、<strong>Google Colab</strong> 上で 1 セルずつコードを動かしながら学ぶ連動ドキュメントです。
-      最終的にはブラウザでガチャを引ける Web アプリ一式が、教材通りに進めるだけで手元に組み上がります。
+      を、 自分の Windows PC で <strong>Python + Docker Desktop + Bruno</strong> を使って
+      手を動かしながら学ぶ連動ドキュメントです。
+      最終的にはブラウザでガチャを引ける Web アプリ一式が、 教材通りに進めるだけで手元に組み上がります。
     </p>
 
     <div class="callout tip">
       <span class="label">💡 学び方</span>
-      <p>各章は「📒 セル N」 という見出し付きのコードブロックで構成されています。
-        Colab に <strong>新しいセルを追加 → 右上の Copy ボタンでコピー → 貼り付け → Shift+Enter</strong>
-        を順に繰り返すだけで、章の最後まで進められます。</p>
-      <p>本教材の特徴は、各章が <strong>「同じコードを書き足し / 書き換えて書き加えていく」</strong>
-        ステップ式の構成になっていること。ステップごとにサーバや DB が動く状態に保たれ、
-        1 ステップ進むたびに動作確認 → 次のステップで機能を 1 つ追加、を繰り返します。</p>
-      <p>慣れてきたら <strong>セルを書き換えて壊し、出力がどう変わるか</strong> を観察すると
+      <p>各章は「📒 コード」 と「▶️ 実行」 の見出し付きブロックで構成されています。
+        VS Code などのエディタで該当ファイルを編集 → 保存 → PowerShell で実行、 を繰り返すだけで
+        章の最後まで進められます。</p>
+      <p>本教材の特徴は、 各章が <strong>「同じコードを書き足し / 書き換えて書き加えていく」</strong>
+        ステップ式の構成になっていること。 ステップごとにサーバや DB が動く状態に保たれ、
+        1 ステップ進むたびに動作確認 → 次のステップで機能を 1 つ追加、 を繰り返します。</p>
+      <p>慣れてきたら <strong>コードを書き換えて壊し、 出力がどう変わるか</strong> を観察すると
         吸収が深まります。</p>
     </div>
 
@@ -98,16 +99,16 @@
 
     <h2>目次</h2>
     <ol>
-      <li><a href="./ch00-overview.html"><strong>第 0 章</strong> 全体像と学び方</a> — このシリーズで何を学ぶか、どう進めるか</li>
-      <li><a href="./ch01-http.html"><strong>第 1 章</strong> HTTPサーバーを建ててみよう</a> — TCP/HTTP/HTTPメソッドからJSONレスポンスまで</li>
-      <li><a href="./ch02-database.html"><strong>第 2 章</strong> データベース基礎</a> — RDB の基礎、 PK / 制約、 INSERT/SELECT で 1 テーブル動かす</li>
-      <li><a href="./ch03-connect.html"><strong>第 3 章</strong> サーバとデータベースをつないでみる</a> — REST クライアント → サーバ → SQLite まで一気通貫の最初に動くものを作る</li>
-      <li><a href="./ch04-postgres-docker.html"><strong>第 4 章</strong> ローカル移行 + フロント起動</a> — Colab 卒業、 Docker で PG 立てて、 学習モードフロントを繋ぐ</li>
+      <li><a href="./ch00-overview.html"><strong>第 0 章</strong> 全体像と環境構築</a> — Python / Docker Desktop / Bruno のセットアップ</li>
+      <li><a href="./ch01-http.html"><strong>第 1 章</strong> HTTPサーバーを段階的に組み立てる</a> — myserver.py を 6 ステップで</li>
+      <li><a href="./ch02-database.html"><strong>第 2 章</strong> Postgres + Docker でデータベース基礎</a> — psql で 1 テーブルを動かす</li>
+      <li><a href="./ch03-connect.html"><strong>第 3 章</strong> Python から DB を叩く</a> — psycopg + Bruno で初めて 1 つのシステムに</li>
+      <li><a href="./ch04-postgres-docker.html"><strong>第 4 章</strong> フロントを足す</a> — 静的ファイル配信 + CORS</li>
       <li><a href="./ch05-gacha.html"><strong>第 5 章</strong> ガチャ抽選を本実装</a> — テーブル準備 + 重み付き乱択 + トランザクション</li>
       <li><a href="./ch06-box.html"><strong>第 6 章</strong> Box と JOIN・集計</a> — 履歴から所持品の集計 SQL</li>
-      <li><a href="./ch07-auth.html"><strong>第 7 章</strong> ユーザー管理を導入</a> — 「全員同じ Box」 を解消する → register / login + パスワードハッシュ + Bearer Token</li>
-      <li><a href="./ch08-local.html"><strong>第 8 章</strong> ローカル移行 + 仕上げ</a> — Postgres + Docker + ファイル分割 + 自動テスト</li>
-      <li><a href="./ch09-extending.html"><strong>第 9 章</strong> 拡張: ここから先</a> — ログインボーナス、 アイドル風生成、 ピックアップ、 マイグレーション、 SNS</li>
+      <li><a href="./ch07-auth.html"><strong>第 7 章</strong> ユーザー管理を導入</a> — register / login + パスワードハッシュ + Bearer Token</li>
+      <li><a href="./ch08-local.html"><strong>第 8 章</strong> 仕上げ + 自動テスト</a> — ファイル分割 + .env + ユニット/smoke/CI</li>
+      <li><a href="./ch09-extending.html"><strong>第 9 章</strong> 拡張: ここから先</a> — ログインボーナス、 ピックアップ、 マイグレーション、 SNS</li>
     </ol>
 
     <h2>付録</h2>
@@ -118,15 +119,18 @@
     <h2>前提</h2>
     <ul>
       <li>プログラミング経験 1〜2 年 (Java / Kotlin など)</li>
-      <li>Python は構文が読める程度で OK。Python 固有の話は都度補足します</li>
-      <li>データベースは「PK / FK を聞いたことがある」レベル想定</li>
+      <li>Python は構文が読める程度で OK。 Python 固有の話は都度補足します</li>
+      <li>データベースは「PK / FK を聞いたことがある」 レベル想定</li>
     </ul>
 
     <h2>使うもの</h2>
     <ul>
-      <li>Web ブラウザ (Chrome / Edge / Firefox / Safari)</li>
-      <li>Google アカウント (Colab 用、無料)</li>
-      <li>余裕があれば: ローカル環境 (Python 3.10+ + Docker) で本番想定の PG にも触ってみる</li>
+      <li>Windows PC (個人または会社、 Docker Desktop が動かせること)</li>
+      <li>Web ブラウザ (Chrome / Edge / Firefox)</li>
+      <li>Python 3.11+ (python.org installer)</li>
+      <li>Docker Desktop (PostgreSQL を立てるのに使う)</li>
+      <li>Bruno (REST クライアント)</li>
+      <li>(任意) VS Code + Git for Windows</li>
     </ul>
 
     <div class="pager">

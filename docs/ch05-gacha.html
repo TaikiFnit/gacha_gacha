@@ -41,44 +41,40 @@
       排出設定 / 所持履歴 の 4 テーブルも必要です。 ここで一気に揃えます。
     </p>
 
+    <p>
+      この章では <code>db/schema.sql</code> と <code>db/seed.sql</code> をリポジトリ用に整備するとともに、
+      psql で対応する DDL/DML を流して動作させていきます。 まずは psql に入ってください:
+    </p>
+
     <div class="colab-step">
-      <span class="step-tag">📒 セル 5-A — users.coins 列を追加 + guest ユーザー</span>
-<pre><code class="language-python">import sqlite3
-conn = sqlite3.connect("gacha.db")
-conn.row_factory = sqlite3.Row    # Ch.3 で導入したパターン: 結果を dict ライクに扱える
+      <span class="step-tag">▶️ ターミナル B: psql に入る</span>
+<pre><code class="language-powershell">docker exec -it gacha_pg psql -U gacha -d gacha</code></pre>
+    </div>
 
-# 既に coins 列を足してあったら何もしない (= 冪等)
-cols = {row["name"] for row in conn.execute("PRAGMA table_info(users)")}
-if "coins" not in cols:
-    conn.execute("ALTER TABLE users ADD COLUMN coins INTEGER NOT NULL DEFAULT 1000")
+    <div class="colab-step">
+      <span class="step-tag">📒 SQL 5-A — users.coins 列を追加 + guest ユーザー</span>
+<pre><code class="language-sql">-- coins 列を追加 (既にある場合 ALTER は失敗するので IF NOT EXISTS で守る)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS coins INTEGER NOT NULL DEFAULT 1000;
 
-# guest ユーザー (Ch.7 でちゃんとした認証を入れるまでの仮ユーザー)
-conn.execute("""
-    INSERT INTO users (id, name, display_name, coins)
-    VALUES (1, 'guest', 'ゲスト', 1000)
-    ON CONFLICT DO NOTHING
-""")
-conn.commit()
+-- guest ユーザー (Ch.7 でちゃんとした認証を入れるまでの仮ユーザー)
+INSERT INTO users (id, name, display_name, coins)
+VALUES (1, 'guest', 'ゲスト', 1000)
+ON CONFLICT (id) DO NOTHING;
 
-for row in conn.execute("SELECT * FROM users"):
-    print(dict(row))
-conn.close()</code></pre>
+-- 確認
+SELECT * FROM users;</code></pre>
     </div>
 
     <details>
-      <summary>📚 コラム: <code>ALTER TABLE</code> / <code>PRAGMA table_info</code> / <code>ON CONFLICT DO NOTHING</code></summary>
+      <summary>📚 コラム: <code>ALTER TABLE ... ADD COLUMN IF NOT EXISTS</code> / <code>ON CONFLICT DO NOTHING</code></summary>
       <p>
-        <strong><code>ALTER TABLE</code></strong>: 既存テーブルの定義を変える SQL。 列を追加 / 削除 / 型変更 などに使う。
+        <strong><code>ALTER TABLE ... ADD COLUMN</code></strong>: 既存テーブルの定義を変える SQL。 列を追加 / 削除 / 型変更 などに使う。
         本番運用では「データを壊さずスキーマだけ変える」 のが鉄則で、 列追加は安全だが型変更や削除は要注意。
+        Postgres では <code>IF NOT EXISTS</code> を付けて<strong>「既に列があれば何もしない」</strong> 形にすると、
+        スクリプトを何度流しても安全 (= 冪等) になります。
       </p>
       <p>
-        <strong><code>PRAGMA table_info(users)</code></strong>: SQLite が用意している
-        「テーブルの構造を覗く」 命令。 戻ってくる行の 2 列目が列名。
-        既に <code>coins</code> 列があるか確認してから <code>ALTER TABLE</code> を実行することで、
-        このセルを<strong>何度実行しても安全</strong>になります (= 冪等)。
-      </p>
-      <p>
-        <strong><code>ON CONFLICT DO NOTHING</code></strong>: SQLite/Postgres の便利機能。
+        <strong><code>ON CONFLICT DO NOTHING</code></strong>: Postgres の便利機能。
         UNIQUE 制約や PRIMARY KEY と衝突する INSERT があったとき、 エラーにせずに「何もしない」 で終わる。
         スクリプトを何度実行しても結果が変わらない (= 冪等性) を作るのに使う。
       </p>
@@ -90,14 +86,13 @@ conn.close()</code></pre>
     </details>
 
     <div class="colab-step">
-      <span class="step-tag">📒 セル 5-B — characters マスタ</span>
-<pre><code class="language-sql">%%sql
-DROP TABLE IF EXISTS characters;
+      <span class="step-tag">📒 SQL 5-B — characters マスタ</span>
+<pre><code class="language-sql">DROP TABLE IF EXISTS characters CASCADE;
 CREATE TABLE characters (
-    id      INTEGER PRIMARY KEY AUTOINCREMENT,
-    name    TEXT    NOT NULL UNIQUE,
-    rarity  INTEGER NOT NULL CHECK (rarity BETWEEN 1 AND 5),
-    emoji   TEXT    NOT NULL DEFAULT '❓'
+    id      BIGSERIAL    PRIMARY KEY,
+    name    TEXT         NOT NULL UNIQUE,
+    rarity  SMALLINT     NOT NULL CHECK (rarity BETWEEN 1 AND 5),
+    emoji   TEXT         NOT NULL DEFAULT '❓'
 );
 INSERT INTO characters (id, name, rarity, emoji) VALUES
     ( 1, 'スライム',     1, '🟢'),
@@ -112,30 +107,36 @@ INSERT INTO characters (id, name, rarity, emoji) VALUES
     (10, 'ドラゴン',     5, '🐉'),
     (11, '不死鳥',       5, '🔥'),
     (12, '伝説の勇者',   5, '⚔️');
+
+-- BIGSERIAL の sequence を最大 id まで進めておく
+SELECT setval(pg_get_serial_sequence('characters', 'id'),
+              (SELECT MAX(id) FROM characters));
+
 SELECT COUNT(*) AS total, MAX(rarity) AS max_rarity FROM characters;</code></pre>
     </div>
 
     <div class="colab-step">
-      <span class="step-tag">📒 セル 5-C — gachas + gacha_items + user_characters</span>
-<pre><code class="language-sql">%%sql
-DROP TABLE IF EXISTS user_characters;
-DROP TABLE IF EXISTS gacha_items;
-DROP TABLE IF EXISTS gachas;
+      <span class="step-tag">📒 SQL 5-C — gachas + gacha_items + user_characters</span>
+<pre><code class="language-sql">DROP TABLE IF EXISTS user_characters CASCADE;
+DROP TABLE IF EXISTS gacha_items     CASCADE;
+DROP TABLE IF EXISTS gachas          CASCADE;
 
 CREATE TABLE gachas (
-    id    INTEGER PRIMARY KEY AUTOINCREMENT,
-    name  TEXT    NOT NULL UNIQUE,
-    price INTEGER NOT NULL CHECK (price > 0)
+    id    BIGSERIAL    PRIMARY KEY,
+    name  TEXT         NOT NULL UNIQUE,
+    price INTEGER      NOT NULL CHECK (price > 0)
 );
 INSERT INTO gachas (id, name, price) VALUES
     (1, '通常ガチャ',       100),
     (2, 'プレミアムガチャ', 300);
+SELECT setval(pg_get_serial_sequence('gachas', 'id'),
+              (SELECT MAX(id) FROM gachas));
 
 CREATE TABLE gacha_items (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    gacha_id     INTEGER NOT NULL REFERENCES gachas(id),
-    character_id INTEGER NOT NULL REFERENCES characters(id),
-    weight       INTEGER NOT NULL CHECK (weight > 0),
+    id           BIGSERIAL PRIMARY KEY,
+    gacha_id     BIGINT    NOT NULL REFERENCES gachas(id)     ON DELETE CASCADE,
+    character_id BIGINT    NOT NULL REFERENCES characters(id) ON DELETE RESTRICT,
+    weight       INTEGER   NOT NULL CHECK (weight > 0),
     UNIQUE (gacha_id, character_id)
 );
 INSERT INTO gacha_items (gacha_id, character_id, weight) VALUES
@@ -150,10 +151,10 @@ INSERT INTO gacha_items (gacha_id, character_id, weight) VALUES
     (2, 10,   8), (2, 11,   8), (2, 12,   4);
 
 CREATE TABLE user_characters (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    character_id INTEGER NOT NULL REFERENCES characters(id),
-    obtained_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+    id           BIGSERIAL   PRIMARY KEY,
+    user_id      BIGINT      NOT NULL REFERENCES users(id)      ON DELETE CASCADE,
+    character_id BIGINT      NOT NULL REFERENCES characters(id) ON DELETE RESTRICT,
+    obtained_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX idx_uc_user ON user_characters(user_id);
 
@@ -164,6 +165,17 @@ SELECT
     </div>
 
     <p>確認: <code>gachas=2, gacha_items=19, user_characters=0</code> になれば OK。</p>
+
+    <div class="callout note">
+      <span class="label">📝 これらの SQL を <code>db/schema.sql</code> / <code>db/seed.sql</code> にも残す</span>
+      <p>
+        psql で打つだけでも動きますが、 リポジトリの <code>db/schema.sql</code> と <code>db/seed.sql</code> にも
+        対応する内容を書いて<strong>ファイルとして残す</strong>のが本筋です。 そうしておけば、
+        <code>docker compose down -v &amp;&amp; docker compose up -d</code> で完全リセットしたとき自動再生成されます。
+        本リポジトリには既に整備済みの完成版があるので、 それを参照しつつ、 各ステップの SQL を psql で
+        対話的に試す → schema.sql に反映、 という流れがオススメ。
+      </p>
+    </div>
 
     <details>
       <summary>📚 コラム: 「外部キー (Foreign Key)」 と <code>REFERENCES</code></summary>
@@ -191,16 +203,19 @@ SELECT
     </p>
 
     <div class="colab-step">
-      <span class="step-tag">📒 セル 5-D — sqlite 接続 (再掲) + 動作確認</span>
-<pre><code class="language-python">import sqlite3
+      <span class="step-tag">📒 myserver.py — get_conn ヘルパ (Ch.3 で導入済み、 再掲)</span>
+<pre><code class="language-python"># Ch.3 で myserver.py に書いた以下のヘルパを再利用します
+import psycopg
+from psycopg.rows import dict_row
 from contextlib import contextmanager
 
-DB_PATH = "gacha.db"
+DB_PARAMS = dict(
+    host="localhost", port=5432, dbname="gacha", user="gacha", password="gacha",
+)
 
 @contextmanager
 def get_conn():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    conn = psycopg.connect(**DB_PARAMS, row_factory=dict_row)
     try:
         yield conn
         conn.commit()
@@ -252,7 +267,7 @@ DROP TABLE users;
         プレースホルダ (<code>?</code>) を使うと、 ライブラリが値を「データ」 として安全に扱ってくれる:
       </p>
 <pre><code class="language-python"># ✅ 安全な書き方
-cur = conn.execute("SELECT * FROM users WHERE name = ?", (name,))</code></pre>
+cur = conn.execute("SELECT * FROM users WHERE name = %s", (name,))</code></pre>
       <p>
         変数を SQL に埋めるときは<strong>必ず <code>?</code></strong>。 例外なし。
         (Postgres / psycopg では <code>%s</code> という別の記号を使うが、 役割は同じ — Ch.8 で扱う)
@@ -350,7 +365,7 @@ def fetch_pool(conn, gacha_id):
         SELECT c.id AS character_id, c.name, c.rarity, c.emoji, gi.weight
           FROM gacha_items gi
           JOIN characters c ON c.id = gi.character_id
-         WHERE gi.gacha_id = ?
+         WHERE gi.gacha_id = %s
          ORDER BY c.rarity, c.id
     """, (gacha_id,)).fetchall()
     return [GachaItem(**dict(r)) for r in rows]
@@ -498,7 +513,7 @@ def gacha_pull(h):
     with get_conn() as conn:
         # ガチャ情報
         g = conn.execute(
-            "SELECT id, name, price FROM gachas WHERE id = ?",
+            "SELECT id, name, price FROM gachas WHERE id = %s",
             (gacha_id,)
         ).fetchone()
         if g is None:
@@ -506,7 +521,7 @@ def gacha_pull(h):
 
         # コイン残高チェック
         coins_now = conn.execute(
-            "SELECT coins FROM users WHERE id = ?", (user_id,)
+            "SELECT coins FROM users WHERE id = %s", (user_id,)
         ).fetchone()["coins"]
         if coins_now &lt; g["price"]:
             raise bad_request(f"コインが足りません (必要 {g['price']} / 所持 {coins_now})")
@@ -519,12 +534,12 @@ def gacha_pull(h):
 
         # ★ ここから 2 つの書き換え (UPDATE + INSERT) を 1 セットとしてやる
         new_coins = conn.execute(
-            "UPDATE users SET coins = coins - ? WHERE id = ? RETURNING coins",
+            "UPDATE users SET coins = coins - ? WHERE id = %s RETURNING coins",
             (g["price"], user_id),
         ).fetchone()["coins"]
 
         obtained_at = conn.execute(
-            "INSERT INTO user_characters (user_id, character_id) VALUES (?, ?) "
+            "INSERT INTO user_characters (user_id, character_id) VALUES (%s, %s) "
             "RETURNING obtained_at",
             (user_id, won.character_id),
         ).fetchone()["obtained_at"]
@@ -550,17 +565,17 @@ print("✅ /api/gacha/pull が本実装に")</code></pre>
     </ol>
 
     <p>
-      Colab で確認:
+      psql で確認 (ターミナル B で <code>docker exec -it gacha_pg psql -U gacha -d gacha</code> 後):
     </p>
 
-<pre><code class="language-sql">%%sql
--- 引いた履歴
+<pre><code class="language-sql">-- 引いた履歴
 SELECT u.name, c.name AS char_name, c.rarity, uc.obtained_at
   FROM user_characters uc
   JOIN users      u ON u.id = uc.user_id
   JOIN characters c ON c.id = uc.character_id
  ORDER BY uc.id DESC
  LIMIT 10;
+
 -- coins 残高
 SELECT name, coins FROM users WHERE id = 1;</code></pre>
 

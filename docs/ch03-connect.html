@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>第3章 サーバとデータベースをつないでみる — gacha_gacha</title>
+<title>第3章 Python から DB を叩く — gacha_gacha</title>
 <link rel="stylesheet" href="./assets/style.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
 </head>
@@ -14,9 +14,9 @@
     <div class="meta-bar">
       <span class="badge">Chapter 3</span>
       <span>所要時間: 60〜90 分</span>
-      <span>形式: Ch.1 サーバ + Ch.2 DB を Colab 内で連結</span>
+      <span>形式: Ch.1 の myserver.py に DB 呼び出しを足す</span>
     </div>
-    <h1>第 3 章 — サーバとデータベースをつないでみる</h1>
+    <h1>第 3 章 — Python から DB を叩く</h1>
 
     <p>
       Ch.1 で <strong>HTTP サーバ</strong>、 Ch.2 で <strong>users テーブル</strong>を作りました。
@@ -24,27 +24,28 @@
     </p>
 
     <p>
-      ゴールはシンプル。 REST クライアント (Postman など) からサーバに POST してユーザーを 1 件作り、
-      ブラウザでサーバの GET を叩くと <strong>DB に保存されたユーザーが JSON で返ってくる</strong>。
+      ゴールはシンプル。 Bruno からサーバに POST してユーザーを 1 件作り、
+      ブラウザ (もしくは Bruno) でサーバの GET を叩くと <strong>DB に保存されたユーザーが JSON で返ってくる</strong>。
       この 1 往復が成立した瞬間が、 本教材で最初に「自分で全部つないで動かした」 状態です。
     </p>
 
     <div class="callout tip">
       <span class="label">📐 この章で学ぶこと</span>
       <ul>
-        <li>Colab で立てたサーバを<strong>外から叩く方法</strong> (port を公開する Colab の機能)</li>
-        <li>サーバから<strong>同じ Colab 上の sqlite ファイル</strong>に INSERT / SELECT する</li>
-        <li>REST クライアントで POST、 ブラウザで GET を試して動くものを確かめる</li>
+        <li>Python のパッケージ管理 (<code>venv</code> + <code>pip</code>)</li>
+        <li><code>psycopg</code> で Python から PostgreSQL に接続する</li>
+        <li>myserver.py に DB 呼び出しを足して、 INSERT / SELECT を発行する</li>
+        <li>Bruno で POST、 ブラウザで GET を試して動くものを確かめる</li>
       </ul>
     </div>
 
     <div class="callout note">
       <span class="label">📝 まだ扱わないこと</span>
       <ul>
-        <li>パスワード / 認証 (Ch.6 で導入)</li>
-        <li>SQL インジェクション対策 ( <strong>?</strong> プレースホルダは使うが、 「なぜ」 の話は Ch.5)</li>
-        <li>JOIN / GROUP BY / トランザクション (必要になる Ch.7 / Ch.8 で)</li>
-        <li>本格フロントエンド (Ch.4 でローカルに移ってから)</li>
+        <li>パスワード / 認証 (Ch.7 で導入)</li>
+        <li>SQL インジェクション対策 (<code>%s</code> プレースホルダは使うが、 「なぜ」 の話は Ch.5)</li>
+        <li>JOIN / GROUP BY / トランザクション (必要になる Ch.5 / Ch.6 で)</li>
+        <li>本格フロントエンド (Ch.4 で導入)</li>
       </ul>
       <p>ここでは<strong>「動く」 を最優先</strong>。 セキュリティや効率の話は、 必要性が見えてから足していきます。</p>
     </div>
@@ -66,23 +67,23 @@
           </marker>
         </defs>
         <rect class="b" x="20"  y="50" width="200" height="140"/>
-        <text class="lbl" x="120" y="85">REST クライアント</text>
-        <text class="sub" x="120" y="105">Postman / Hoppscotch /</text>
-        <text class="sub" x="120" y="123">ブラウザ / curl</text>
-        <text class="sub" x="120" y="160">POST {"name":"alice"}</text>
-        <text class="sub" x="120" y="178">GET  /api/users</text>
+        <text class="lbl" x="120" y="85">Bruno</text>
+        <text class="sub" x="120" y="105">(REST クライアント)</text>
+        <text class="sub" x="120" y="135">POST /api/users</text>
+        <text class="sub" x="120" y="155">{"name": "alice", ...}</text>
+        <text class="sub" x="120" y="178">+ ブラウザで GET</text>
 
         <rect class="b" x="280" y="50" width="200" height="140"/>
         <text class="lbl" x="380" y="85">Python サーバ</text>
-        <text class="sub" x="380" y="105">(Colab セル内)</text>
+        <text class="sub" x="380" y="105">myserver.py (localhost:8000)</text>
         <text class="sub" x="380" y="135">@route("POST", "/api/users")</text>
         <text class="sub" x="380" y="155">@route("GET",  "/api/users")</text>
-        <text class="sub" x="380" y="178">+ Ch.1 で書いたルータ</text>
+        <text class="sub" x="380" y="178">+ psycopg で DB へ</text>
 
         <rect class="b" x="540" y="50" width="200" height="140"/>
-        <text class="lbl" x="640" y="85">SQLite</text>
-        <text class="sub" x="640" y="105">(Colab 内のファイル)</text>
-        <text class="sub" x="640" y="135">gacha.db</text>
+        <text class="lbl" x="640" y="85">PostgreSQL</text>
+        <text class="sub" x="640" y="105">(Docker, localhost:5432)</text>
+        <text class="sub" x="640" y="135">database: gacha</text>
         <text class="sub" x="640" y="155">users テーブル</text>
         <text class="sub" x="640" y="178">(Ch.2 で作ったやつ)</text>
 
@@ -95,207 +96,187 @@
 
     <p>
       Ch.4 以降ではこの構成のまま<strong>規模を大きく</strong>していきます。
-      REST クライアントは本物のフロント (web/) になり、 SQLite は PostgreSQL に置き換わり、
-      サーバは認証や抽選など本気の処理を持つようになります。 でも<strong>骨格はこれと同じ</strong>。
+      Bruno はブラウザのフロント (<code>web/</code>) になり、 サーバは認証や抽選など本気の処理を持つようになります。
+      でも<strong>骨格はこれと同じ</strong>。
     </p>
 
     <!-- =============================================================== -->
-    <h2>3.2 REST クライアントを 1 つ用意する</h2>
+    <h2>3.2 Python の仮想環境 (venv) を作る</h2>
     <p>
-      ブラウザは GET なら URL を打てば叩けますが、 POST はそうはいきません。 何か<strong>API テスト用のツール</strong>が必要です。
-      好きなものを 1 つ選んでください:
-    </p>
-
-    <table>
-      <thead><tr><th>ツール</th><th>場所</th><th>登録</th><th>備考</th></tr></thead>
-      <tbody>
-        <tr>
-          <td><a href="https://hoppscotch.io/" target="_blank">Hoppscotch</a></td>
-          <td>Web ブラウザ</td>
-          <td>不要</td>
-          <td><strong>一番おすすめ</strong>。 開いた瞬間使える</td>
-        </tr>
-        <tr>
-          <td><a href="https://www.postman.com/downloads/" target="_blank">Postman</a></td>
-          <td>デスクトップアプリ</td>
-          <td>無料アカウント要</td>
-          <td>業界標準。 機能豊富</td>
-        </tr>
-        <tr>
-          <td><a href="https://insomnia.rest/download" target="_blank">Insomnia</a></td>
-          <td>デスクトップアプリ</td>
-          <td>不要 (基本機能)</td>
-          <td>シンプルでよい</td>
-        </tr>
-        <tr>
-          <td><code>!curl</code></td>
-          <td>Colab セル内</td>
-          <td>不要</td>
-          <td>シェル混在。 セルで完結する</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <p>
-      この章では Hoppscotch を念頭に書きますが、 どれを使っても操作は同じ
-      (URL、 メソッド、 ヘッダ、 ボディを設定して送るだけ)。
-    </p>
-
-    <!-- =============================================================== -->
-    <h2>3.3 Ch.2 で作った users テーブルを再確認</h2>
-    <p>
-      Ch.2 で <code>gacha.db</code> ファイルに <code>users</code> テーブルを作っているはずです。
-      Ch.2 の Notebook を開いた状態のまま、 新しいセルを足して中身を確認:
+      Ch.0 でグローバルにインストールした Python に、 教材で使うライブラリをそのまま入れていくのは
+      <strong>非推奨</strong>です。 別のプロジェクトで違うバージョンが必要になったとき競合するため、
+      普通は<strong>プロジェクトごとに「仮想環境 (venv)」 を作って分離</strong>します。
     </p>
 
     <div class="colab-step">
-      <span class="step-tag">📒 セル 3-A — 確認用</span>
-<pre><code class="language-python">%%sql
-SELECT name, sql FROM sqlite_master WHERE type='table';</code></pre>
+      <span class="step-tag">▶️ venv を作る (PowerShell)</span>
+<pre><code class="language-powershell">cd $HOME\gacha_workspace
+
+# .venv という名前で仮想環境を作る
+python -m venv .venv
+
+# その仮想環境を有効化
+.\.venv\Scripts\Activate.ps1
+# プロンプトの先頭に (.venv) が付けば成功
+
+# pip と Python のパスを確認 (.venv の中を指していること)
+where.exe python
+pip --version</code></pre>
+    </div>
+
+    <div class="callout warn">
+      <span class="label">⚠️ Activate.ps1 が「実行が許可されていません」 とエラーになる場合</span>
+      <p>
+        PowerShell の実行ポリシーを 1 度だけ変える必要があります:
+      </p>
+<pre><code class="language-powershell">Set-ExecutionPolicy -Scope CurrentUser RemoteSigned</code></pre>
+      <p>
+        その後、 もう一度 <code>.\.venv\Scripts\Activate.ps1</code> を実行してください。
+        無効化するには <code>deactivate</code> と打つだけです。
+      </p>
+    </div>
+
+    <h3>psycopg をインストール</h3>
+    <p>
+      Postgres の Python ドライバ <strong>psycopg (バージョン 3 系)</strong> をインストールします。
+      <code>[binary]</code> を付けるとプリビルド済みのバイナリ版が入って、 C ヘッダのコンパイルが要らなくなります。
+    </p>
+
+    <div class="colab-step">
+      <span class="step-tag">▶️ pip install</span>
+<pre><code class="language-powershell"># venv を有効化した状態で
+pip install "psycopg[binary]"
+
+# 確認
+python -c "import psycopg; print(psycopg.__version__)"</code></pre>
     </div>
 
     <div class="expected-output">
       <span class="lbl">✅ 期待される出力</span>
-<pre><code>name    sql
-------  --------------------------------------------------------------
-users   CREATE TABLE users (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            name        TEXT NOT NULL UNIQUE,
-            display_name TEXT NOT NULL,
-            created_at  TEXT NOT NULL DEFAULT (datetime('now'))
-        )</code></pre>
+<pre><code>3.x.x</code></pre>
     </div>
 
     <p>
-      <strong>もし users テーブルが無いなら、 Ch.2 を 1 度通してから戻ってください</strong>。
-      ファイルベースの <code>gacha.db</code> を使っているので、 ノートブックを再起動した場合も
-      ファイル自体は残ります (Colab のランタイム再接続では消えますが)。
+      仮想環境が無効化されると <code>python</code> や <code>pip</code> がグローバルなものに戻り、
+      psycopg が見つからなくなります。 PowerShell を開き直したら毎回
+      <code>.\.venv\Scripts\Activate.ps1</code> を打つのを忘れずに。
     </p>
+
+    <details>
+      <summary>📚 コラム: <code>requirements.txt</code> で依存を固定する</summary>
+      <p>
+        プロジェクトの依存パッケージを<strong>テキストファイルで宣言</strong>しておくと、
+        他の人 / 他の PC でも同じ環境を再現できます:
+      </p>
+<pre><code class="language-powershell"># 現在 venv に入っているものを書き出す
+pip freeze &gt; requirements.txt
+
+# 別 PC ではこれで一発復元
+pip install -r requirements.txt</code></pre>
+      <p>
+        本教材では依存が <code>psycopg[binary]</code> しかないので、 <code>requirements.txt</code> は
+        実質 1 行です。 リポジトリには <code>server/requirements.txt</code> として既に置いてあります。
+      </p>
+    </details>
 
     <!-- =============================================================== -->
-    <h2>3.4 サーバを起動する (Ch.1 の最終形 = セル 1-G)</h2>
+    <h2>3.3 Python から PG に接続して SELECT</h2>
     <p>
-      Ch.1 で組み立てた最終のサーバを起動します。 <strong>新しいセルを 1 つ作って、
-      Ch.1 のセル 1-A (serve/hit ヘルパ) → セル 1-G (例外を JSON エラー化した完成形)</strong>
-      の順にコピペしてください。 1-G まで動くと、 ルータ + 例外ハンドリング付きのサーバが port 8000 で立ちます。
-    </p>
-
-    <p>
-      確認: 別セルで <code>hit("GET", "/api/health")</code> が <code>(200, '{"status": "ok"}')</code>
-      を返せば OK。 ここまでは Ch.1 と同じ世界線。
-    </p>
-
-    <!-- =============================================================== -->
-    <h2>3.5 ステップ 1 — Colab の port を公開して、 ブラウザから叩く</h2>
-    <p>
-      これまで Colab 内部からしか叩いていなかったサーバを、 <strong>外部から</strong>叩けるようにします。
-      Colab には <code>serve_kernel_port_as_public</code> という関数が用意されていて、
-      ローカルで動いているポートに対する公開 URL を発行してくれます。
+      まずは myserver.py を触る前に、 <strong>独立したスクリプト</strong>で接続を試します。
+      接続できてようやく、 「サーバに組み込む」 価値が出てきます。
     </p>
 
     <div class="colab-step">
-      <span class="step-tag">📒 セル 3-B — 公開 URL を取得</span>
-<pre><code class="language-python">from google.colab.output import serve_kernel_port_as_public
-PUBLIC_URL = serve_kernel_port_as_public(8000)
-print("公開URL:", PUBLIC_URL)</code></pre>
+      <span class="step-tag">📝 db_check.py — 接続確認用スクリプト</span>
+<pre><code class="language-python"># db_check.py
+# Postgres に接続して SELECT を 1 回打って、 結果を表示するだけ。
+import psycopg
+from psycopg.rows import dict_row
+
+DSN = dict(
+    host="localhost",
+    port=5432,
+    dbname="gacha",
+    user="gacha",
+    password="gacha",
+)
+
+with psycopg.connect(**DSN, row_factory=dict_row) as conn:
+    with conn.cursor() as cur:
+        cur.execute("SELECT id, name, display_name FROM users ORDER BY id")
+        for row in cur.fetchall():
+            print(row)</code></pre>
     </div>
-
-    <div class="expected-output">
-      <span class="lbl">✅ 期待される出力 (毎回違う URL が出る)</span>
-<pre><code>公開URL: https://abcd1234.colab.googleusercontent.com/</code></pre>
-    </div>
-
-    <h3>🧪 ブラウザで GET を叩く</h3>
-    <p>
-      表示された URL の末尾に <code>api/health</code> を付けて、 <strong>ブラウザの新しいタブで開いてみてください</strong>。
-      例: <code>https://abcd1234.colab.googleusercontent.com/api/health</code>
-    </p>
-    <p>
-      最初に Colab の認可画面 (「公開を許可しますか?」 の確認) が出ます。 「許可」 を押すと、
-      <strong><code>{"status": "ok"}</code> がブラウザに表示</strong>されます。
-      <em>これが、 サーバが Colab の中から飛び出して外の世界と話した最初の瞬間</em>。
-    </p>
-
-    <div class="callout note">
-      <span class="label">📝 公開 URL の有効期限</span>
-      この URL は Colab セッションが続いている間だけ有効です。 ランタイムを切ると消える。
-      別の人と共有して同時に叩くこともできるので、 友達とローカルではなくこの URL を使って
-      ペアで作業すると面白い。
-    </div>
-
-    <!-- =============================================================== -->
-    <h2>3.6 ステップ 2 — POST を受け取って中身を覗く</h2>
-    <p>
-      まず<strong>「受け取った body をそのまま print する」 だけ</strong>のハンドラを足します。
-      DB に書く前に、 「サーバまでデータが来ているか」 を 1 度確かめるのが今回のステップ。
-    </p>
 
     <div class="colab-step">
-      <span class="step-tag">📒 セル 3-C — POST /api/users (echo 版) を追加</span>
-<pre><code class="language-python">@route("POST", "/api/users")
-def create_user(h):
-    body = h._read_json()
-    print("👀 受信:", body)        # ← Colab セル下に出力される
-    h._json(200, {"received": body})
-
-# ルートを変えたので、 同じ App クラスを再利用してサーバ再起動
-serve(App)
-print("ルート一覧:")
-for k in sorted(ROUTES): print(" ", k)</code></pre>
+      <span class="step-tag">▶️ 動かす</span>
+<pre><code class="language-powershell"># venv が有効化された状態で
+python db_check.py</code></pre>
     </div>
 
     <div class="expected-output">
-      <span class="lbl">✅ 期待される出力</span>
-<pre><code>listening on http://127.0.0.1:8000
-ルート一覧:
-  ('GET', '/api/health')
-  ('POST', '/api/sum')
-  ('POST', '/api/users')   ← 増えた!</code></pre>
+      <span class="lbl">✅ 期待される出力 (Ch.2 で alice/bob を残していれば)</span>
+<pre><code>{'id': 1, 'name': 'alice', 'display_name': 'アリス・スミス'}
+{'id': 2, 'name': 'bob', 'display_name': 'ボブ'}</code></pre>
     </div>
 
-    <h3>🧪 REST クライアントから POST してみる</h3>
-    <p>Hoppscotch を開いて以下を設定:</p>
-    <ol>
-      <li>メソッド: <strong>POST</strong></li>
-      <li>URL: <code>{PUBLIC_URL}/api/users</code> (ステップ 1 で取得したやつ)</li>
-      <li>Headers タブ: <code>Content-Type: application/json</code></li>
-      <li>Body タブ → Raw → JSON: <pre><code class="language-json">{"name": "alice", "display_name": "アリス"}</code></pre></li>
-      <li><strong>Send</strong> ボタン押下</li>
-    </ol>
+    <h3>💡 解説</h3>
+    <ul>
+      <li><code>psycopg.connect(**DSN, ...)</code> で Postgres と接続。 <code>**DSN</code> は
+          dict をキーワード引数として展開する記法</li>
+      <li><code>row_factory=dict_row</code> を指定すると、 結果の各行が <code>tuple</code> ではなく
+          <code>dict</code> で返る。 後で JSON にするのに便利</li>
+      <li><code>with</code> ブロックを抜けるときに自動で close される。 コネクションリーク防止</li>
+    </ul>
 
-    <div class="expected-output">
-      <span class="lbl">✅ 期待される結果</span>
+    <details>
+      <summary>📚 コラム: なぜ psycopg は「3 系」 なのか</summary>
+      <p>
+        Postgres 用 Python ドライバには長らく <strong>psycopg2</strong> という定番がありました。
+        2021 年に <strong>psycopg 3</strong> がリリースされ、 こちらが新世代の定番になっています。
+        本教材では psycopg 3 を使います。 違いの主なポイント:
+      </p>
       <ul>
-        <li>Hoppscotch 側の応答: <code>200 OK</code> + <code>{"received": {"name": "alice", "display_name": "アリス"}}</code></li>
-        <li><strong>Colab のセル下</strong>に <code>👀 受信: {'name': 'alice', 'display_name': 'アリス'}</code> が表示される</li>
+        <li>パッケージ名が <code>psycopg2</code> → <code>psycopg</code> (= バージョンサフィックスなし)</li>
+        <li>非同期 (asyncio) ネイティブ対応</li>
+        <li>row_factory が組み込み (<code>dict_row</code>, <code>namedtuple_row</code>, ...)</li>
+        <li>サーバサイド準備済みステートメントの自動管理</li>
       </ul>
-    </div>
-
-    <p>
-      <strong>ここがまさに「フロントとサーバが繋がった瞬間」</strong>。
-      別マシンの REST クライアントから送ったデータが、 Colab で動いている Python のサーバに
-      きちんと届いていることが目で確認できます。
-    </p>
+      <p>
+        既存の Postgres + Python プロジェクトに <code>psycopg2</code> を見たら、 「2 系」 だと判断してください
+        (古いコードでは <code>import psycopg2</code> となっています)。
+      </p>
+    </details>
 
     <!-- =============================================================== -->
-    <h2>3.7 ステップ 3 — DB に INSERT する</h2>
+    <h2>3.4 myserver.py に DB 接続を組み込む</h2>
     <p>
-      届いたデータを <strong>sqlite に保存</strong>します。 Ch.2 で作った <code>gacha.db</code> に
-      <code>sqlite3</code> モジュール経由で接続し、 INSERT を発行。
+      Ch.1 で書いた <code>myserver.py</code> に、 DB 接続用のヘルパと、 ユーザー操作の API を 2 つ追加します。
+      ステップ 6 の完成版を出発点にします。
     </p>
 
     <div class="colab-step">
-      <span class="step-tag">📒 セル 3-D — sqlite 接続ヘルパ</span>
-<pre><code class="language-python">import sqlite3
+      <span class="step-tag">📝 myserver.py — DB 接続ヘルパを追加</span>
+      <p>
+        <code>myserver.py</code> の<strong>冒頭の import 群と、 ROUTES 定義の前のあたり</strong>に
+        以下を追記します:
+      </p>
+<pre><code class="language-python">import psycopg
+from psycopg.rows import dict_row
 from contextlib import contextmanager
 
-DB_PATH = "gacha.db"  # Ch.2 で %%sql sqlite:///gacha.db に作ったファイル
+DB_PARAMS = dict(
+    host="localhost",
+    port=5432,
+    dbname="gacha",
+    user="gacha",
+    password="gacha",
+)
 
 @contextmanager
 def get_conn():
-    """1 リクエスト分の DB 接続を貸す。 ブロックを抜けるときに自動コミット。"""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row    # 結果を辞書ライクにアクセスできる
+    """1 リクエストぶんの DB 接続を貸す。 ブロックを抜けるときに commit / rollback。"""
+    conn = psycopg.connect(**DB_PARAMS, row_factory=dict_row)
     try:
         yield conn
         conn.commit()
@@ -303,16 +284,14 @@ def get_conn():
         conn.rollback()
         raise
     finally:
-        conn.close()
-
-# 接続確認
-with get_conn() as conn:
-    cur = conn.execute("SELECT COUNT(*) AS n FROM users")
-    print("現在のユーザー数:", cur.fetchone()["n"])</code></pre>
+        conn.close()</code></pre>
     </div>
 
     <div class="colab-step">
-      <span class="step-tag">📒 セル 3-E — POST /api/users を本当に INSERT する</span>
+      <span class="step-tag">📝 myserver.py — POST /api/users と GET /api/users を追加</span>
+      <p>
+        <code>ROUTES</code> 定義の中に、 既存のルートに加えて以下を追加します:
+      </p>
 <pre><code class="language-python">@route("POST", "/api/users")
 def create_user(h):
     body = h._read_json()
@@ -321,88 +300,159 @@ def create_user(h):
     if not name:
         raise bad_request("name は必須")
 
-    with get_conn() as conn:
-        cur = conn.execute(
-            # ?  はプレースホルダ。 文字列を直接埋め込まないこと (Ch.5 で詳しく)
-            "INSERT INTO users (name, display_name) VALUES (?, ?) "
-            "RETURNING id, name, display_name, created_at",
+    with get_conn() as conn, conn.cursor() as cur:
+        # %s はプレースホルダ。 文字列を直接埋め込まないこと (Ch.5 で詳しく)
+        cur.execute(
+            """
+            INSERT INTO users (name, display_name)
+            VALUES (%s, %s)
+            RETURNING id, name, display_name, created_at
+            """,
             (name, display_name),
         )
-        row = dict(cur.fetchone())
-
+        row = cur.fetchone()
     h._json(200, {"user": row})
 
-serve(App)
-print("✅ /api/users が DB に INSERT するようになった")</code></pre>
+
+@route("GET", "/api/users")
+def list_users(h):
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute("SELECT id, name, display_name, created_at FROM users ORDER BY id")
+        rows = cur.fetchall()
+    h._json(200, {"users": rows})</code></pre>
     </div>
 
-    <h3>🧪 試す</h3>
-    <ol>
-      <li>Hoppscotch から <code>POST /api/users</code> に <code>{"name":"bob","display_name":"ボブ"}</code></li>
-      <li>応答: <code>{"user": {"id": 2, "name": "bob", "display_name": "ボブ", "created_at": "..."}}</code></li>
-      <li>Colab で確認用セル: <pre><code class="language-python">%%sql
-SELECT * FROM users;</code></pre></li>
-      <li>bob が増えているはず</li>
-    </ol>
+    <div class="callout note">
+      <span class="label">📝 datetime と JSON</span>
+      <p>
+        SELECT で返ってくる <code>created_at</code> は Python の <code>datetime</code> オブジェクトです。
+        標準 <code>json.dumps</code> はそのままでは datetime をシリアライズできません。
+        <code>_json</code> ヘルパに <code>default=str</code> を渡すよう書き換えます:
+      </p>
+<pre><code class="language-python">def _json(self, status, obj):
+    b = json.dumps(obj, ensure_ascii=False, default=str).encode("utf-8")
+    #                                       ^^^^^^^^^^^^ ← これを足す
+    self.send_response(status)
+    self.send_header("Content-Type", "application/json; charset=utf-8")
+    self.send_header("Content-Length", str(len(b)))
+    self.end_headers()
+    self.wfile.write(b)</code></pre>
+      <p>
+        <code>default=str</code> は「JSON にできない値が来たら <code>str()</code> で文字列化する」
+        の意味。 datetime は ISO 風の文字列になります。 これを忘れると、 GET /api/users が
+        <code>TypeError: Object of type datetime is not JSON serializable</code> で 500 エラーになります。
+      </p>
+    </div>
 
-    <h3>📝 自分でちょっと変えてみる</h3>
-    <ul>
-      <li>同じ <code>name</code> で 2 回 POST → 2 回目は <code>500 internal server error</code> が返る (理由は <code>UNIQUE constraint failed</code>)。 サーバのログを Colab セル下で確認できる</li>
-      <li>これを <strong>400 「その name は既に使われています」</strong> に変えるには? (ヒント: <code>try/except sqlite3.IntegrityError</code>)</li>
-    </ul>
-
-    <!-- =============================================================== -->
-    <h2>3.8 ステップ 4 — GET でユーザー一覧を返す</h2>
-    <p>
-      最後の往復。 ブラウザで GET を叩くと <strong>DB の中身が JSON で返ってくる</strong> ようにします。
-    </p>
+    <h3>サーバを起動して確認</h3>
 
     <div class="colab-step">
-      <span class="step-tag">📒 セル 3-F — GET /api/users</span>
-<pre><code class="language-python">@route("GET", "/api/users")
-def list_users(h):
-    with get_conn() as conn:
-        rows = conn.execute(
-            "SELECT id, name, display_name, created_at FROM users ORDER BY id"
-        ).fetchall()
-    h._json(200, {"users": [dict(r) for r in rows]})
-
-serve(App)</code></pre>
+      <span class="step-tag">▶️ ターミナル A: サーバ再起動</span>
+<pre><code class="language-powershell"># venv を有効化した状態で
+python myserver.py</code></pre>
     </div>
 
-    <h3>🧪 ブラウザで叩く</h3>
+    <div class="expected-output">
+      <span class="lbl">✅ 期待される出力 (ルート一覧に /api/users が増えている)</span>
+<pre><code>listening on http://127.0.0.1:8000  (Ctrl+C で終了)
+ルート一覧:
+  GET   /
+  GET   /api/echo
+  GET   /api/health
+  GET   /api/users         ← 増えた!
+  POST  /api/echo
+  POST  /api/sum
+  POST  /api/users         ← 増えた!</code></pre>
+    </div>
+
+    <!-- =============================================================== -->
+    <h2>3.5 Bruno で叩く</h2>
+
+    <h3>POST で 1 件作る</h3>
     <p>
-      <code>{PUBLIC_URL}/api/users</code> をブラウザの新タブで開きます (ステップ 1 で取った公開 URL)。
-      ブラウザは GET を叩くだけなら何も特別なツール不要。
+      Ch.0 で入れた Bruno を起動。 Ch.1 で作った Collection (<code>gacha_local</code>) に
+      新しいリクエストを追加します:
+    </p>
+    <ol>
+      <li>左ペインで右クリック → <strong>New Request</strong> → 名前: <code>POST users</code></li>
+      <li>メソッド: <strong>POST</strong>、 URL: <code>http://localhost:8000/api/users</code></li>
+      <li><strong>Body</strong> タブ → <strong>JSON</strong>:
+<pre><code class="language-json">{
+  "name": "dave",
+  "display_name": "デイブ"
+}</code></pre></li>
+      <li>右上の <strong>Send</strong> ボタン</li>
+    </ol>
+
+    <div class="expected-output">
+      <span class="lbl">✅ 期待される結果</span>
+<pre><code>Status: 200 OK
+Body:
+{
+  "user": {
+    "id": 4,
+    "name": "dave",
+    "display_name": "デイブ",
+    "created_at": "2026-04-27 06:30:12+09:00"
+  }
+}</code></pre>
+    </div>
+
+    <h3>GET で一覧を見る</h3>
+    <p>
+      ブラウザで <code>http://localhost:8000/api/users</code> を開く。
+      もしくは Bruno で同じ URL に GET でリクエスト。
     </p>
 
     <div class="expected-output">
-      <span class="lbl">🎉 期待される表示</span>
+      <span class="lbl">✅ 期待される結果</span>
 <pre><code>{
   "users": [
-    {"id": 1, "name": "alice", "display_name": "アリス", "created_at": "2026-04-27 06:30:12"},
-    {"id": 2, "name": "bob",   "display_name": "ボブ",   "created_at": "2026-04-27 06:32:55"}
+    {"id": 1, "name": "alice", "display_name": "アリス・スミス", "created_at": "..."},
+    {"id": 2, "name": "bob",   "display_name": "ボブ",         "created_at": "..."},
+    {"id": 4, "name": "dave",  "display_name": "デイブ",       "created_at": "..."}
   ]
 }</code></pre>
     </div>
 
     <p>
-      <strong>これがゴール</strong>。 別マシンの REST クライアントから POST → サーバ →
-      Colab の SQLite に保存 → ブラウザの GET → 同じ DB から読み出し → JSON 表示。
+      <strong>これがゴール</strong>。 Bruno から POST → サーバ → DB に保存 →
+      ブラウザの GET → 同じ DB から読み出し → JSON 表示。
       <em>ここまで自分の手で組み上げた「動くシステム」</em>です。
     </p>
 
-    <!-- =============================================================== -->
-    <h2>3.9 ここまでで気づくこと</h2>
-
-    <h3>SQL を打たないと中身が見えるのは psql / %%sql の方が便利</h3>
+    <h3>同じ name で 2 回 POST すると?</h3>
     <p>
-      ブラウザで <code>/api/users</code> を見るのと、 Colab で <code>%%sql SELECT * FROM users</code>
-      を打つのと、 同じデータが見えました。 違いは:
+      Bruno の <code>POST users</code> リクエストをそのまま再送 (もう一度 Send) してみます。
+    </p>
+
+    <div class="expected-output">
+      <span class="lbl">✅ 期待される結果</span>
+<pre><code>Status: 500 Internal Server Error
+Body:
+{
+  "error": "internal server error",
+  "detail": "duplicate key value violates unique constraint \"users_name_key\""
+}</code></pre>
+    </div>
+
+    <p>
+      Ch.2 で見た UNIQUE 違反が、 Python サーバを通して 500 エラーとして返ってきました。
+      これを<strong>「400 + その name は既に使われています」</strong> に変換するのは Ch.7 の register 実装で扱います。
+      今は「DB 違反が中継されている」 ことを確認できれば OK。
+    </p>
+
+    <!-- =============================================================== -->
+    <h2>3.6 ここまでで気づくこと</h2>
+
+    <h3>SQL を打つのと、 API 経由で見るのは別の経路</h3>
+    <p>
+      ブラウザで <code>/api/users</code> を見るのと、 psql で <code>SELECT * FROM users</code> を打つのと、
+      同じデータが見えました。 違いは:
     </p>
     <ul>
       <li><strong>API 経由</strong>: ネットワーク越し、 認証や絞り込みなどビジネスロジックを通る経路</li>
-      <li><strong>SQL 直接</strong>: DB に直接アクセス。 開発者がデバッグや管理に使う経路</li>
+      <li><strong>SQL 直接 (psql)</strong>: DB に直接アクセス。 開発者がデバッグや管理に使う経路</li>
     </ul>
     <p>
       実運用では SQL 直接アクセスは「サーバ管理者だけ」 で、 一般ユーザーには API 経由しか触らせません。
@@ -411,32 +461,31 @@ serve(App)</code></pre>
 
     <h3>「同じテーブル、 同じデータ」 を 2 つの世界が共有している</h3>
     <p>
-      Ch.2 で <code>%%sql</code> から作ったテーブルに、 Ch.3 の Python コードが INSERT しています。
-      DB は<strong>共有資源</strong>。 サーバを止めても DB は残るし、 サーバを再起動しても以前のデータは見える
-      (ステップ 4 で確認)。 これが永続化のありがたみ。
+      Ch.2 で psql から作ったテーブルに、 Ch.3 の Python コードが INSERT しました。
+      DB は<strong>共有資源</strong>。 サーバを止めても DB は残るし、 サーバを再起動しても以前のデータは見える。
+      これが永続化のありがたみ。
     </p>
 
     <!-- =============================================================== -->
-    <h2>3.10 まだ抱えている問題 — 次章への動機</h2>
+    <h2>3.7 まだ抱えている問題 — 次章への動機</h2>
     <ul>
-      <li>同じ name で 2 回 POST すると 500 が出る (= ちゃんと 400 に変換したい)</li>
-      <li>ブラウザで <code>/api/users</code> を直接見られる = 認証無しで誰でも全ユーザー一覧が読める</li>
-      <li>Colab を閉じるとサーバも DB も消える (= ローカルに移したい / Postgres にしたい)</li>
-      <li>本物の「ガチャ画面」 が無い。 REST クライアントで叩くのは開発体験で、 ゲーム体験ではない</li>
+      <li>同じ name で 2 回 POST すると 500 が出る (= 7 章で 400 に変換する)</li>
+      <li>ブラウザで <code>/api/users</code> を直接見られる = 認証無しで誰でも全ユーザー一覧が読める (= 7 章で認証導入)</li>
+      <li>本物の「ガチャ画面」 が無い。 Bruno で叩くのは開発体験で、 ゲーム体験ではない (= 4 章でフロント導入)</li>
     </ul>
 
     <p>
-      これを解いていくのが Ch.4 以降。 次の Ch.4 で<strong>ローカルに環境を移行</strong>して、
-      Postgres + 本格フロント (web/) を導入します。
+      これを解いていくのが Ch.4 以降。 次の Ch.4 で<strong>本物のフロント (HTML/CSS/JS) を足し</strong>、
+      ブラウザでガチャ画面が見えるようにします。
     </p>
 
     <h2>本章のまとめ</h2>
     <ul>
-      <li>Colab の <code>serve_kernel_port_as_public</code> でローカルサーバを外部公開できる</li>
-      <li>Python の <code>sqlite3</code> モジュールで Ch.2 の DB ファイルにそのまま接続できる</li>
-      <li>POST / GET の往復が成立 = フロント (REST クライアント) ⇄ サーバ ⇄ DB が連動した</li>
+      <li>Python の仮想環境 (venv) を作って、 そこに <code>psycopg</code> をインストールした</li>
+      <li><code>psycopg.connect(**DB_PARAMS, row_factory=dict_row)</code> で Postgres に接続できる</li>
+      <li>SQL の値はプレースホルダ <code>%s</code> で渡す (文字列連結は厳禁)</li>
+      <li>POST / GET の往復が成立 = Bruno (REST クライアント) ⇄ Python サーバ ⇄ Postgres が連動した</li>
       <li>同じ DB に 2 つの世界 (SQL 直接 / API 経由) からアクセスできることを目で確認した</li>
-      <li>これが、 教材の最初の<strong>「動くものを作った」 体験</strong>。 ここからは書き加えていく</li>
     </ul>
 
     <div class="pager">
@@ -446,7 +495,7 @@ serve(App)</code></pre>
       </a>
       <a class="next" href="./ch04-postgres-docker.html">
         <span class="lbl">次へ</span>
-        <span class="ttl">第 4 章 ローカル移行 + フロント →</span>
+        <span class="ttl">第 4 章 フロントを足す →</span>
       </a>
     </div>
   </main>
