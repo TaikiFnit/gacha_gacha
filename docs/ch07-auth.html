@@ -342,7 +342,7 @@ def lookup_session(conn, token):
         SELECT u.id, u.name, u.display_name, u.coins, s.expires_at
           FROM sessions s
           JOIN users    u ON u.id = s.user_id
-         WHERE s.token = ?
+         WHERE s.token = %s
         """, (token,))
     row = cur.fetchone()
     if row is None: return None
@@ -528,7 +528,7 @@ def box(h):
                    MAX(uc.obtained_at) AS last_obtained_at
               FROM user_characters uc
               JOIN characters       c ON c.id = uc.character_id
-             WHERE uc.user_id = ?
+             WHERE uc.user_id = %s
              GROUP BY c.id
              ORDER BY c.rarity DESC, c.id
         """, (user["id"],)).fetchall()

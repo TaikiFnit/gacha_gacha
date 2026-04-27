@@ -63,16 +63,98 @@
       </p>
     </details>
 
+    <h3>📒 SQL の前提知識: テーブルエイリアス と <code>JOIN ... ON</code> 構文</h3>
+
+    <p>
+      これから出てくるクエリには <code>uc</code>、 <code>c</code> といった謎の短い名前が出てきます。 これは
+      <strong>テーブルエイリアス</strong>(別名)で、 長いテーブル名を毎回書かずに済ませるためのもの。
+      まず仕組みを 1 つずつ整理します。
+    </p>
+
+    <h4>(1) テーブルエイリアス: <code>FROM user_characters uc</code></h4>
+
+    <p>
+      <code>FROM</code> や <code>JOIN</code> の後にスペース 1 つ空けて短い名前を書くと、 そのテーブルを
+      <strong>その名前で呼べる</strong>ようになります。
+    </p>
+
+<pre><code class="language-sql">FROM user_characters AS uc      -- 正式: AS uc で「uc という名前で扱う」
+FROM user_characters    uc      -- AS は省略可。 同じ意味
+FROM user_characters            -- エイリアスなしだとそのまま user_characters.* で参照する</code></pre>
+
+    <p>本教材を含め多くのスタイルでは <strong>AS は省略</strong>します。 これだけ:</p>
+
+<pre><code class="language-sql">SELECT uc.id, uc.user_id, c.name      -- ↓ ここに対応
+  FROM user_characters uc             -- uc = user_characters の別名
+  JOIN characters       c             -- c  = characters       の別名
+    ON c.id = uc.character_id</code></pre>
+
+    <p>
+      なぜエイリアスを付けるのか:
+    </p>
+    <ul>
+      <li><strong>列名の曖昧さを避ける</strong>: <code>id</code> という列名は両方のテーブルにある。
+          <code>uc.id</code> / <code>c.id</code> と書けば「どっちのテーブルの id か」 を明示できる</li>
+      <li><strong>タイプ量を減らす</strong>: <code>user_characters.character_id</code> より <code>uc.character_id</code> の方が短い</li>
+      <li><strong>同じテーブルを 2 回使うときに必須</strong>: 例えば「友達と自分の Box を比較」 のように、
+          1 つの SQL で同じテーブルを 2 回 JOIN するときは、 違うエイリアスを付けないと区別できない</li>
+    </ul>
+
+    <h4>(2) JOIN ... ON の構文</h4>
+
+<pre><code class="language-sql">FROM &lt;左テーブル&gt; &lt;エイリアス&gt;
+JOIN &lt;右テーブル&gt; &lt;エイリアス&gt;
+  ON &lt;結合条件&gt;</code></pre>
+
+    <p>
+      <strong>結合条件 (<code>ON ...</code>)</strong> には「どの列とどの列の値が等しい行どうしをくっつけるか」 を書きます。
+      99% は <strong>外部キー = 主キー</strong> の形:
+    </p>
+
+<pre><code class="language-sql">  FROM user_characters uc
+  JOIN characters       c
+    ON c.id = uc.character_id
+--     ^^^^   ^^^^^^^^^^^^^^^^^
+--     c の主キー = uc の外部キー
+--     (履歴側の「キャラ ID 票」 で、 マスタ側のドラゴン情報を引っ張ってくる)</code></pre>
+
+    <p>
+      この 1 行で DB は<strong>「<code>uc.character_id</code> と等しい <code>c.id</code> を探して、 その行を横に連結する」</strong>
+      という処理を全行に対してやってくれる。
+    </p>
+
+    <details>
+      <summary>📚 コラム: SQL の JOIN を Kotlin/Java で書くと?</summary>
+      <p>
+        実は同じことを Kotlin の <code>HashMap</code> 引きで書ける:
+      </p>
+<pre><code class="language-kotlin">// characters マスタを id でひける Map にしておく
+val byId: Map&lt;Long, Character&gt; = characters.associateBy { it.id }
+
+// 履歴を回しながら、 マスタを引く (= JOIN)
+for (uc in user_characters) {
+    val c = byId[uc.character_id]   // ← これが ON c.id = uc.character_id
+    println("${c.name} を ${uc.obtained_at} に取得")
+}</code></pre>
+      <p>
+        SQL の JOIN は<strong>これを DB に肩代わりしてもらう</strong>記法。 ループも HashMap も書かず、
+        「結合キー」 を宣言するだけで、 DB 側が量に応じて最適なアルゴリズム(Hash Join、 Nested Loop、 Merge Join 等)を
+        自動で選んでくれる。 件数が多いほど SQL の方が圧倒的に速い。
+      </p>
+    </details>
+
     <h3>動作確認: SQL で先に試す</h3>
 
     <div class="colab-step">
       <span class="step-tag">📒 セル 6-A — JOIN だけしてみる</span>
 <pre><code class="language-sql">-- psql で直接打って試す
 -- guest (id=1) の履歴 + キャラ情報
-SELECT uc.id AS uc_id, c.name, c.rarity, c.emoji, uc.obtained_at
-  FROM user_characters uc
-  JOIN characters       c ON c.id = uc.character_id
- WHERE uc.user_id = 1
+SELECT uc.id AS uc_id,        -- uc_id という別名で出力
+       c.name, c.rarity, c.emoji, uc.obtained_at
+  FROM user_characters uc      -- 履歴テーブル(uc という別名)
+  JOIN characters       c      -- キャラマスタ(c という別名)
+    ON c.id = uc.character_id  -- 結合条件: 履歴の character_id でマスタを引く
+ WHERE uc.user_id = 1          -- guest の行だけ
  ORDER BY uc.id;</code></pre>
     </div>
 
@@ -81,7 +163,30 @@ SELECT uc.id AS uc_id, c.name, c.rarity, c.emoji, uc.obtained_at
       出る (= 履歴なので重複を許す)。 これを 1 行にまとめるのが次のステップ。
     </p>
 
+    <details>
+      <summary>📚 コラム: <code>SELECT uc.id AS uc_id</code> の <code>AS</code> は何?</summary>
+      <p>
+        <strong>列にも別名</strong>が付けられます。 これがあるのは「2 つのテーブルから同じ列名 (<code>id</code>) を
+        SELECT したい」 とき:
+      </p>
+<pre><code class="language-sql">SELECT uc.id, c.id        -- ❌ 結果テーブルに "id" 列が 2 つ → アクセスしづらい
+SELECT uc.id AS uc_id,
+       c.id  AS char_id   -- ✅ uc_id / char_id と別名で出力</code></pre>
+      <p>
+        Python 側で <code>row["uc_id"]</code> として受け取るときに役立つ。 Ch.5 の <code>fetch_pool</code> で
+        <code>SELECT c.id AS character_id</code> としていたのも、 dataclass の <code>character_id</code>
+        フィールドに合わせるためのリネーム。 SQL を変える時はこの「列名契約」 を意識すると壊しにくい。
+      </p>
+    </details>
+
     <h2>6.2 GROUP BY + COUNT で「個数別」 にまとめる</h2>
+
+    <p>
+      6.1 のクエリは<strong>履歴行を 1 行ずつ展開</strong>するだけでした。 同じスライムを 3 回引いていれば、
+      結果も 3 行のスライムが並ぶ。 でも Box の見せ方としては
+      <strong>「スライム ×3」 のように 1 行にまとめたい</strong>。 そのための仕組みが
+      <code>GROUP BY</code>。
+    </p>
 
     <figure>
       <img src="./assets/figs/gacha-groupby.svg" alt="GROUP BY character_id で行が束ねられる図"
@@ -89,44 +194,112 @@ SELECT uc.id AS uc_id, c.name, c.rarity, c.emoji, uc.obtained_at
       <figcaption><code>character_id</code> ごとに行を集約し、 <code>COUNT(*)</code> で「束ねた行の数」 を出す</figcaption>
     </figure>
 
+    <h3>具体例: 5 回引いた履歴を 「Box」 表示に圧縮する</h3>
+
+    <p>
+      例えばユーザー (id=1) が 5 回引いて、 6.1 の JOIN クエリの結果がこうだったとします:
+    </p>
+
+<pre><code>(GROUP BY する前)
+ uc.id | c.id | c.name   | c.rarity | uc.obtained_at
+-------+------+----------+----------+------------------
+   1   |   1  | スライム |    1     | 14:30
+   2   |   1  | スライム |    1     | 14:35     ← 同じスライムが 2 回目
+   3   |  10  | ドラゴン |    5     | 14:40
+   4   |   1  | スライム |    1     | 14:42     ← 同じスライムが 3 回目
+   5   |   2  | コウモリ |    1     | 14:45</code></pre>
+
+    <p>
+      ここに <code>GROUP BY c.id</code> を付けると、 <strong><code>c.id</code> が同じ行どうしを 1 つの "グループ" にまとめ</strong>、
+      各グループに対して <strong>1 行ずつ</strong> 集計値が出ます:
+    </p>
+
+<pre><code>(GROUP BY c.id した後)
+ c.id | c.name   | c.rarity | COUNT(*) | MIN(obtained_at) | MAX(obtained_at)
+------+----------+----------+----------+------------------+------------------
+   1  | スライム |    1     |    3     | 14:30            | 14:42
+   2  | コウモリ |    1     |    1     | 14:45            | 14:45
+  10  | ドラゴン |    5     |    1     | 14:40            | 14:40</code></pre>
+
+    <p>
+      これで「スライム × 3 / コウモリ × 1 / ドラゴン × 1」 が一目でわかる Box ができた。
+      <code>MIN(obtained_at)</code> は「初めて引いた時刻」、 <code>MAX(obtained_at)</code> は「最後に引いた時刻」。
+    </p>
+
     <details>
       <summary>📚 コラム: 集計関数と GROUP BY</summary>
       <p>
-        <strong>集計関数</strong> = 複数行を 1 つの値にまとめる関数:
+        <strong>集計関数</strong> = <strong>「複数行 → 1 値」 への圧縮器</strong>。 グループの中の行を全部見て、
+        1 つのスカラ値を返す。 SQL で頻出するのは:
       </p>
       <ul>
-        <li><code>COUNT(*)</code> — 行数。 <code>COUNT(列)</code> なら<strong>NULL を除いた</strong>非NULL値の数</li>
-        <li><code>SUM(列)</code> — 合計</li>
-        <li><code>AVG(列)</code> — 平均</li>
-        <li><code>MIN(列)</code>, <code>MAX(列)</code> — 最小・最大</li>
+        <li><code>COUNT(*)</code> — 行数。 <code>COUNT(列)</code> なら<strong>NULL を除いた</strong>非 NULL 値の数</li>
+        <li><code>SUM(列)</code> — 数値列の合計</li>
+        <li><code>AVG(列)</code> — 数値列の平均</li>
+        <li><code>MIN(列)</code>, <code>MAX(列)</code> — 最小・最大。 <strong>日時にも文字列にも使える</strong></li>
       </ul>
       <p>
-        単独で使うとテーブル全体に対する 1 つの値が出る。 <code>GROUP BY 列</code> を付けるとその列ごとにグループ分けして、
-        各グループに対して 1 行ずつ集計値が出る。
+        集計関数を <strong>GROUP BY なしで</strong> 使うと、 テーブル全体に対する 1 値が出る:
+        <code>SELECT COUNT(*) FROM user_characters</code> → 全行数。
       </p>
       <p>
-        例: <code>SELECT character_id, COUNT(*) FROM user_characters GROUP BY character_id;</code> →
-        各キャラに対して<strong>そのキャラを引いた回数</strong>が出る。
+        <code>GROUP BY 列</code> を付けると、 その列ごとにグループ分けして、 各グループに対して 1 行ずつ集計値が出る。
       </p>
     </details>
+
+    <h3>📌 GROUP BY 列の選び方ルール</h3>
+
+    <p>
+      SQL の標準ルールでは、 <code>GROUP BY</code> を付けたとき、 <code>SELECT</code> に書ける列は
+      <strong>次の 2 種類だけ</strong>:
+    </p>
+    <ol>
+      <li><strong>GROUP BY に書いた列そのもの</strong>(各グループで値が一意に決まる)</li>
+      <li><strong>集計関数を通した列</strong>(<code>COUNT(*)</code>、 <code>MIN(...)</code> など)</li>
+    </ol>
+
+    <p>
+      例えば <code>SELECT c.name FROM ... GROUP BY c.id</code> は<strong>本来エラー</strong>。
+      「<code>c.name</code> はグループ内で一意か?」 が SQL からは保証できないため。
+    </p>
+
+    <p>
+      ただし PostgreSQL は賢くて、 <strong><code>GROUP BY 主キー</code> をしているなら、 同じテーブルの他の列も自動的に一意</strong>
+      と認識してくれる(関数従属性の検出)。 だから本教材の SQL は <code>GROUP BY c.id</code> だけで動きます。
+    </p>
+
+    <p>
+      他の DB (MySQL の strict モードなど) や移植性を意識する場合は、 SELECT した非集計列を全部 GROUP BY に書く流派もある:
+    </p>
+
+<pre><code class="language-sql">-- 「c.id だけで GROUP BY」 (PostgreSQL ならこれで OK)
+GROUP BY c.id
+
+-- 「全部書く」 (どの DB でも動く保守的な書き方)
+GROUP BY c.id, c.name, c.rarity, c.emoji</code></pre>
+
+    <p>
+      結果は両方同じ。 本教材の <code>server/app.py</code> 完成版は前者(短い方)、 教材の途中の例では
+      練習として後者(全部書く方)を見せるところもある。
+    </p>
 
     <div class="colab-step">
       <span class="step-tag">📒 セル 6-B — GROUP BY で集計 + JOIN でキャラ名も付ける</span>
 <pre><code class="language-sql">-- psql で直接打って試す
 SELECT c.id, c.name, c.rarity, c.emoji,
-       COUNT(*)            AS count,
-       MIN(uc.obtained_at) AS first_obtained_at,
-       MAX(uc.obtained_at) AS last_obtained_at
+       COUNT(*)            AS count,                -- 引いた回数
+       MIN(uc.obtained_at) AS first_obtained_at,    -- 初めて引いた時刻
+       MAX(uc.obtained_at) AS last_obtained_at      -- 最後に引いた時刻
   FROM user_characters uc
   JOIN characters       c ON c.id = uc.character_id
  WHERE uc.user_id = 1
- GROUP BY c.id, c.name, c.rarity, c.emoji
- ORDER BY c.rarity DESC, c.id;</code></pre>
+ GROUP BY c.id, c.name, c.rarity, c.emoji           -- ← 保守的に全部書く流派
+ ORDER BY c.rarity DESC, c.id;                       -- 高レアから順に</code></pre>
     </div>
 
     <p>
-      <code>MIN</code> / <code>MAX</code> も同じ <code>GROUP BY</code> で取っているので、
-      「初めて獲得した日時」 「最後に獲得した日時」 も 1 つのクエリで出せます。
+      実行すると、 上の「具体例」 で示した形の表が出る。 <code>MIN</code> / <code>MAX</code> も同じ <code>GROUP BY</code>
+      の中で取れるので、 「初めて獲得した日時」 「最後に獲得した日時」 も 1 つのクエリで返せます。
     </p>
 
     <h2>6.3 <code>/api/box</code> ハンドラを書く</h2>
@@ -159,7 +332,7 @@ def box(h):
                    MAX(uc.obtained_at) AS last_obtained_at
               FROM user_characters uc
               JOIN characters       c ON c.id = uc.character_id
-             WHERE uc.user_id = ?
+             WHERE uc.user_id = %s
              GROUP BY c.id
              ORDER BY c.rarity DESC, c.id
             """,
