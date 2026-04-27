@@ -641,13 +641,22 @@ APP_PORT=8000</code></pre>
     </div>
 
     <div class="colab-step">
-      <span class="step-tag">📝 server/db.py — 環境変数を読む</span>
-<pre><code class="language-python">import os
-import psycopg
-from psycopg.rows import dict_row
+      <span class="step-tag">📝 server/db.py — 環境変数を読むように書き換え</span>
+      <p>
+        §8.1 で書いた <code>server/db.py</code> を、 以下の内容で<strong>丸ごと置き換え</strong>ます。
+        <code>DB_PARAMS</code> の直書きが <code>_conn_params()</code> の <code>os.getenv(...)</code> に変わるだけで、
+        <code>get_conn</code> / <code>healthcheck</code> の役割は同じ。
+      </p>
+<pre><code class="language-python">"""DB 接続ヘルパ (psycopg)。 環境変数で接続情報を上書きできる。"""
+import os
 from contextlib import contextmanager
 
+import psycopg
+from psycopg.rows import dict_row
+
+
 def _conn_params() -> dict:
+    """環境変数から接続パラメータを組み立てる。 未設定の項目は既定値を使う。"""
     return dict(
         host=os.getenv("PGHOST", "localhost"),
         port=os.getenv("PGPORT", "5432"),
@@ -655,6 +664,7 @@ def _conn_params() -> dict:
         user=os.getenv("PGUSER", "gacha"),
         password=os.getenv("PGPASSWORD", "gacha"),
     )
+
 
 @contextmanager
 def get_conn():
@@ -666,7 +676,27 @@ def get_conn():
         conn.rollback()
         raise
     finally:
-        conn.close()</code></pre>
+        conn.close()
+
+
+def healthcheck():
+    """DB に届くか確認する。 サーバ起動時の早期失敗用。"""
+    try:
+        with get_conn() as conn, conn.cursor() as cur:
+            cur.execute("SELECT 1")
+            cur.fetchone()
+        return True
+    except Exception as e:
+        print(f"[db] healthcheck failed: {e}")
+        return False</code></pre>
+    </div>
+
+    <div class="callout warn">
+      <span class="label">⚠️ <code>healthcheck</code> も忘れずに残す</span>
+      §8.1 で <code>healthcheck</code> も db.py に書いていたはず。 ここで上書きするときに
+      <strong>消し忘れない</strong>こと。 <code>server/app.py</code> の冒頭が
+      <code>from .db import get_conn, healthcheck</code> で <code>healthcheck</code> を import するため、
+      消すと <code>ImportError: cannot import name 'healthcheck'</code> でサーバが起動しない。
     </div>
 
     <div class="callout note">
