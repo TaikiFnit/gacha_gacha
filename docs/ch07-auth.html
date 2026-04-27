@@ -329,7 +329,9 @@ def new_session_token():
 
 def create_session(conn, user_id):
     token = new_session_token()
-    expires = (datetime.now(timezone.utc) + SESSION_TTL).strftime("%Y-%m-%d %H:%M:%S")
+    # datetime オブジェクトをそのまま渡す。 psycopg が TIMESTAMPTZ 列に
+    # 適切に変換して INSERT してくれる(strftime で文字列化しないこと)。
+    expires = datetime.now(timezone.utc) + SESSION_TTL
     conn.execute("INSERT INTO sessions (token, user_id, expires_at) VALUES (%s, %s, %s)",
                  (token, user_id, expires))
     return token, expires
@@ -346,7 +348,9 @@ def lookup_session(conn, token):
         """, (token,))
     row = cur.fetchone()
     if row is None: return None
-    if row["expires_at"] &lt;= datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"):
+    # row["expires_at"] は psycopg が datetime に変換して返す。
+    # 文字列ではなく datetime 同士で比較する。
+    if row["expires_at"] &lt;= datetime.now(timezone.utc):
         delete_session(conn, token)
         return None
     return {"id": row["id"], "name": row["name"],
