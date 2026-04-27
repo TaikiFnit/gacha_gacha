@@ -42,7 +42,7 @@
       </ul>
     </div>
 
-    <h2>9.1 Colab を卒業 — Notebook を持ち帰る</h2>
+    <h2>8.1 Colab を卒業 — Notebook を持ち帰る</h2>
 
     <p>
       Colab メニュー <strong>「ファイル」 → 「ダウンロード」 → 「.ipynb をダウンロード」</strong>
@@ -77,7 +77,7 @@ python -m pip install --upgrade pip</code></pre>
       </p>
     </details>
 
-    <h2>9.2 Postgres を Docker で起動</h2>
+    <h2>8.2 Postgres を Docker で起動</h2>
 
     <p>
       ローカル PC に直接 Postgres をインストールするのも可能ですが、 OS による手順差を避けて
@@ -193,7 +193,7 @@ docker compose ps                                     # State が "Up (healthy)"
 docker compose exec db psql -U gacha -d gacha -c "\dt"
 docker compose exec db psql -U gacha -d gacha -c "SELECT name, rarity FROM characters LIMIT 3"</code></pre>
 
-    <h2>9.3 sqlite3 → psycopg に置き換える</h2>
+    <h2>8.3 sqlite3 → psycopg に置き換える</h2>
 
     <p>
       <code>?</code> プレースホルダを <code>%s</code> に変えるなど、 細かな方言差を吸収する作業です。
@@ -285,7 +285,7 @@ with conn.cursor() as cur:
       移植するのが楽。
     </p>
 
-    <h2>9.4 my_server.py を役割ごとに分割</h2>
+    <h2>8.4 my_server.py を役割ごとに分割</h2>
 
     <p>
       ここまでで <code>my_server.py</code> が 300 行近くになっているはず。 まだ読めるサイズだが、
@@ -319,7 +319,7 @@ python -m server.app</code></pre>
       実行する」 という意味。 Python 公式お作法。
     </p>
 
-    <h2>9.5 自動テストを書く</h2>
+    <h2>8.5 自動テストを書く</h2>
 
     <p>
       手で全機能を毎回確かめるのは続かない。 <strong>機械が代わりにやってくれる</strong>形に。
@@ -426,7 +426,7 @@ raise SystemExit(1 if failed else 0)</code></pre>
 
 <pre><code class="language-bash">python tests/test_unit.py</code></pre>
 
-    <h2>9.6 完成! 動作確認</h2>
+    <h2>8.6 完成! 動作確認</h2>
 
     <p>ターミナル 3 つ用意:</p>
 
@@ -459,7 +459,7 @@ python -m server.app
       <li>sqlite3 → psycopg は<strong>方言の置換</strong>がメイン (<code>?</code> → <code>%s</code>、 接続関数差)</li>
       <li>1 ファイル肥大化 → 役割で分割 (<code>db.py</code> / <code>auth.py</code> / <code>gacha.py</code> / <code>app.py</code>)</li>
       <li>テストは smoke (E2E) + unit (純粋関数) の 2 種類が定番</li>
-      <li>ここまでで本教材の ここでは完成。 Ch.10 はこれをさらに広げるアイディア集</li>
+      <li>ここまでで本教材は一旦完成。 Ch.9 はこれをさらに広げるアイディア集</li>
     </ul>
 
     <div class="pager">

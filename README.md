@@ -140,7 +140,7 @@ bash tests/smoke_curl.sh
 期待する出力 (`test_e2e_sqlite.py`):
 ```
 ========== summary ==========
-  27 passed, 0 failed, 27 total
+  29 passed, 0 failed, 29 total
 ```
 
 ### 教材サイト
