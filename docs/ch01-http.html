@@ -152,7 +152,7 @@ Content-Length: 32
     <ol>
       <li>VS Code (またはお好みのエディタ) で <code>myserver.py</code> を編集して保存</li>
       <li><strong>PowerShell ターミナル A</strong>: <code>python myserver.py</code> でサーバ起動 → 起動メッセージを確認</li>
-      <li><strong>PowerShell ターミナル B</strong>: <code>curl http://localhost:8000/...</code> や Bruno で叩く</li>
+      <li><strong>PowerShell ターミナル B</strong>: <code>curl.exe http://localhost:8000/...</code> や Bruno で叩く (PowerShell では <code>curl</code> ではなく <code>curl.exe</code>)</li>
       <li>変更したら、 ターミナル A で <kbd>Ctrl+C</kbd> → 上矢印キー → <kbd>Enter</kbd> でサーバ再起動</li>
     </ol>
 
@@ -220,6 +220,20 @@ if __name__ == "__main__":
     main()</code></pre>
     </div>
 
+    <div class="callout warn">
+      <span class="label">⚠️ PowerShell の <code>curl</code> は本物の curl ではない</span>
+      <p>
+        Windows PowerShell では <code>curl</code> が <strong><code>Invoke-WebRequest</code> のエイリアス</strong>
+        になっています。 単純な <code>curl URL</code> なら動きますが、 <code>-i</code> や <code>-X POST</code> 等の
+        本物 curl のフラグは <strong>解釈されず</strong> 「Uri を教えてください」 と聞かれて止まります。
+      </p>
+      <p>
+        本教材では <strong>常に <code>curl.exe</code> と明示</strong>して呼びます。 こうすると Windows 同梱の
+        本物 curl (<code>C:\Windows\System32\curl.exe</code>) が呼ばれて、 <code>-i</code> や <code>-X POST</code> が
+        普通に効きます。 あるいは Bruno で叩いてもよいです。
+      </p>
+    </div>
+
     <div class="colab-step">
       <span class="step-tag">▶️ 起動 (ターミナル A) と 叩く (ターミナル B)</span>
 <pre><code class="language-powershell"># ターミナル A
@@ -227,9 +241,9 @@ python myserver.py
 # → listening on http://127.0.0.1:8000  (Ctrl+C で終了)
 
 # ターミナル B (別の PowerShell ウィンドウ)
-curl http://127.0.0.1:8000/
+curl.exe http://127.0.0.1:8000/
 
-# Windows の curl は -v で詳細表示
+# -v で詳細表示 (リクエストヘッダ + レスポンスヘッダ)
 curl.exe -v http://127.0.0.1:8000/</code></pre>
     </div>
 
@@ -260,7 +274,7 @@ Accept: */*
     <h3>📝 自分でちょっと変えてみる</h3>
     <ul>
       <li><code>body</code> を <code>b"\xe3\x81\x93\xe3\x82\x93\xe3\x81\xab\xe3\x81\xa1\xe3\x81\xaf\n"</code> (=「こんにちは」 の UTF-8) にしてみる。 curl の出力で日本語が出る?</li>
-      <li><code>HTTP/1.1 200 OK</code> を <code>HTTP/1.1 418 I'm a teapot</code> にしてみる。 <code>curl -v</code> で見るとステータス行が変わっている</li>
+      <li><code>HTTP/1.1 200 OK</code> を <code>HTTP/1.1 418 I'm a teapot</code> にしてみる。 <code>curl.exe -v</code> で見るとステータス行が変わっている</li>
     </ul>
 
     <p>
@@ -306,8 +320,8 @@ if __name__ == "__main__":
 python myserver.py
 
 # ターミナル B
-curl http://127.0.0.1:8000/
-curl http://127.0.0.1:8000/anything
+curl.exe http://127.0.0.1:8000/
+curl.exe http://127.0.0.1:8000/anything
 
 # ブラウザで http://127.0.0.1:8000/ を開いても OK</code></pre>
     </div>
@@ -330,7 +344,7 @@ curl http://127.0.0.1:8000/anything
     <h3>📝 自分でちょっと変えてみる</h3>
     <ul>
       <li><code>Content-Type</code> を <code>text/html</code> にして、 body を <code>b"&lt;h1&gt;hello&lt;/h1&gt;"</code> に。 ブラウザで開くと太字の見出しになる</li>
-      <li><code>send_response(200)</code> を <code>404</code> にして、 <code>curl -i</code> で見るとステータス行が変わっている</li>
+      <li><code>send_response(200)</code> を <code>404</code> にして、 <code>curl.exe -i</code> で見るとステータス行が変わっている</li>
     </ul>
 
     <!-- =============================================================== -->
@@ -391,10 +405,10 @@ if __name__ == "__main__":
 
     <div class="colab-step">
       <span class="step-tag">▶️ 叩いてみる (ターミナル B)</span>
-<pre><code class="language-powershell">curl http://127.0.0.1:8000/
-curl http://127.0.0.1:8000/api/health
-curl "http://127.0.0.1:8000/api/echo?msg=hello world"
-curl -i http://127.0.0.1:8000/missing    # -i でステータス行も表示</code></pre>
+<pre><code class="language-powershell">curl.exe http://127.0.0.1:8000/
+curl.exe http://127.0.0.1:8000/api/health
+curl.exe "http://127.0.0.1:8000/api/echo?msg=hello world"
+curl.exe -i http://127.0.0.1:8000/missing    # -i でステータス行も表示</code></pre>
     </div>
 
     <div class="expected-output">
@@ -572,13 +586,13 @@ if __name__ == "__main__":
 <pre><code class="language-powershell"># Bruno: 上で作った "POST sum" の Send を押す
 # → 200 + {"answer": 3}
 
-# curl で同じことをする場合
-curl -X POST http://127.0.0.1:8000/api/sum `
+# curl で同じことをする場合 (PowerShell では curl.exe で本物の curl を呼ぶ)
+curl.exe -X POST http://127.0.0.1:8000/api/sum `
      -H "Content-Type: application/json" `
      -d '{\"a\": 1, \"b\": 2}'
 
 # ステップ 3 で動いていた GET も引き続き動く (= リグレッションテスト)
-curl http://127.0.0.1:8000/api/health</code></pre>
+curl.exe http://127.0.0.1:8000/api/health</code></pre>
     </div>
 
     <div class="callout note">
