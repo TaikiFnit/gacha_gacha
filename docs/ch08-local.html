@@ -44,7 +44,7 @@
     <h2>8.1 myserver.py をパッケージに分割</h2>
     <p>
       myserver.py は今や数百行になっているはず。 これを役割ごとに分割します。
-      ここからの作業は<strong>リポジトリの <code>server/</code> 配下と同じ構成</strong>を目指します:
+      最終的な構成は以下のようになります:
     </p>
 
 <pre><code>$HOME\gacha_workspace\
@@ -75,9 +75,501 @@
     </table>
 
     <p>
-      実装の詳細はリポジトリの <code>server/</code> 配下に完成版があります。 自分の myserver.py の各関数を
-      ファイルに移しつつ、 <code>from .db import get_conn</code>、 <code>from . import auth, gacha</code> のような
-      相対 import に書き換えていく作業です。
+      myserver.py の中身を、 役割ごとに以下の 4 ファイルへコピペで切り出します。
+      <strong>ロジックは何も変えません</strong>(同じ関数を別ファイルに動かすだけ)。
+      変わるのは <code>server/app.py</code> の import 文だけ — <code>fetch_pool</code> や <code>hash_password</code>
+      が他のファイルに移ったので、 <code>gacha.fetch_pool</code> / <code>auth.hash_password</code> のように
+      モジュール名経由で呼び出すように書き換えます。
+    </p>
+
+    <h3>📝 server/__init__.py — 空ファイル(パッケージマーカー)</h3>
+    <p>
+      <code>server/__init__.py</code> を中身が空のまま新規作成。 これがあるディレクトリが
+      Python パッケージとして扱われる目印になります。
+    </p>
+<pre><code class="language-python"># server/__init__.py
+# このファイルが存在するだけで server/ がパッケージ扱いになる。
+# 中身は空でよい。</code></pre>
+
+    <h3>📝 server/db.py — DB 接続ヘルパ</h3>
+    <p>myserver.py の <code>DB_PARAMS</code> + <code>get_conn</code> を切り出し、 <code>healthcheck</code> も追加:</p>
+<pre><code class="language-python">"""DB 接続ヘルパ (psycopg)。"""
+from contextlib import contextmanager
+
+import psycopg
+from psycopg.rows import dict_row
+
+DB_PARAMS = dict(
+    host="localhost", port=5432, dbname="gacha",
+    user="gacha", password="gacha",
+)
+# 注: 8.2 で .env から読むように変更します
+
+
+@contextmanager
+def get_conn():
+    """1 リクエストぶんの DB 接続を貸す。 with ブロック抜けで commit / rollback。"""
+    conn = psycopg.connect(**DB_PARAMS, row_factory=dict_row, autocommit=False)
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def healthcheck():
+    """DB に届くか確認する。 サーバ起動時の早期失敗用。"""
+    try:
+        with get_conn() as conn, conn.cursor() as cur:
+            cur.execute("SELECT 1")
+            cur.fetchone()
+        return True
+    except Exception as e:
+        print(f"[db] healthcheck failed: {e}")
+        return False</code></pre>
+
+    <h3>📝 server/auth.py — パスワード + セッション</h3>
+    <p>myserver.py の <code>hash_password</code> / <code>verify_password</code> + セッション系を切り出し:</p>
+<pre><code class="language-python">"""認証 (パスワードハッシュ + セッショントークン)。"""
+import base64
+import hashlib
+import hmac
+import os
+import secrets
+from datetime import datetime, timedelta, timezone
+
+_PBKDF2_ALGO = "sha256"
+_PBKDF2_ITER = 200_000
+_PBKDF2_SALT_BYTES = 16
+_PBKDF2_DKLEN = 32
+SESSION_TTL = timedelta(days=7)
+
+
+def hash_password(password):
+    salt = os.urandom(_PBKDF2_SALT_BYTES)
+    dk = hashlib.pbkdf2_hmac(_PBKDF2_ALGO, password.encode("utf-8"),
+                             salt, _PBKDF2_ITER, dklen=_PBKDF2_DKLEN)
+    return "$".join([
+        f"pbkdf2_{_PBKDF2_ALGO}",
+        str(_PBKDF2_ITER),
+        base64.b64encode(salt).decode(),
+        base64.b64encode(dk).decode(),
+    ])
+
+
+def verify_password(password, stored):
+    try:
+        algo, iter_s, salt_b64, hash_b64 = stored.split("$")
+    except ValueError:
+        return False
+    if not algo.startswith("pbkdf2_"):
+        return False
+    digest_name = algo.split("_", 1)[1]
+    iters = int(iter_s)
+    salt = base64.b64decode(salt_b64)
+    expected = base64.b64decode(hash_b64)
+    actual = hashlib.pbkdf2_hmac(digest_name, password.encode("utf-8"),
+                                 salt, iters, dklen=len(expected))
+    return hmac.compare_digest(actual, expected)
+
+
+def new_session_token():
+    return secrets.token_urlsafe(32)
+
+
+def create_session(conn, user_id):
+    token = new_session_token()
+    expires = datetime.now(timezone.utc) + SESSION_TTL
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO sessions (token, user_id, expires_at) VALUES (%s, %s, %s)",
+            (token, user_id, expires),
+        )
+    return token, expires
+
+
+def lookup_session(conn, token):
+    if not token:
+        return None
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT u.id, u.name, u.display_name, u.coins, s.expires_at
+              FROM sessions s
+              JOIN users    u ON u.id = s.user_id
+             WHERE s.token = %s
+        """, (token,))
+        row = cur.fetchone()
+    if row is None:
+        return None
+    if row["expires_at"] &lt;= datetime.now(timezone.utc):
+        return None
+    return {"id": row["id"], "name": row["name"],
+            "display_name": row["display_name"], "coins": row["coins"]}
+
+
+def delete_session(conn, token):
+    if not token:
+        return
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM sessions WHERE token = %s", (token,))</code></pre>
+
+    <h3>📝 server/gacha.py — ガチャ抽選</h3>
+    <p>myserver.py の <code>GachaItem</code> dataclass + <code>fetch_pool</code> + <code>draw</code> を切り出し:</p>
+<pre><code class="language-python">"""ガチャ抽選ロジック (重み付き乱択)。"""
+import random
+from dataclasses import dataclass
+
+
+@dataclass
+class GachaItem:
+    character_id: int
+    name: str
+    rarity: int
+    emoji: str
+    weight: int
+
+
+def fetch_pool(conn, gacha_id):
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT c.id AS character_id, c.name, c.rarity, c.emoji, gi.weight
+              FROM gacha_items gi
+              JOIN characters c ON c.id = gi.character_id
+             WHERE gi.gacha_id = %s
+             ORDER BY c.rarity, c.id
+        """, (gacha_id,))
+        rows = cur.fetchall()
+    return [GachaItem(**r) for r in rows]
+
+
+def draw(pool, rng=None):
+    if not pool:
+        raise ValueError("ガチャに排出設定がありません")
+    rng = rng or random.SystemRandom()
+    weights = [item.weight for item in pool]
+    return rng.choices(pool, weights=weights, k=1)[0]</code></pre>
+
+    <h3>📝 server/app.py — HTTP サーバ + 全ハンドラ</h3>
+    <p>
+      残った「ルート定義 + App クラス + main()」 を <code>server/app.py</code> に書きます。
+      myserver.py の中身とほぼ同じですが、 <strong>切り出した関数を呼ぶ箇所</strong>を
+      <code>auth.hash_password(...)</code> / <code>gacha.fetch_pool(...)</code> のように
+      モジュール経由で呼ぶよう書き換えます。
+    </p>
+
+    <details>
+      <summary>📂 完全版の app.py を展開して見る (約 240 行)</summary>
+<pre><code class="language-python">"""http.server で書かれたガチャ API サーバ。"""
+from __future__ import annotations
+
+import json
+import os
+import sys
+import traceback
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlparse
+
+import psycopg
+
+# ↓ 切り出した 3 ファイルから取り込む(相対 import)
+from . import auth, gacha
+from .db import get_conn, healthcheck
+
+APP_PORT = int(os.getenv("APP_PORT", "8000"))
+
+
+# ---- 例外 / ルーター --------------------------------------------------
+class AppError(Exception):
+    def __init__(self, status, message):
+        super().__init__(message)
+        self.status = status
+        self.message = message
+
+def bad_request(msg): return AppError(400, msg)
+def unauthorized(msg="ログインが必要です"): return AppError(401, msg)
+def not_found(msg="見つかりません"): return AppError(404, msg)
+
+ROUTES = {}
+def route(method, path):
+    def deco(fn):
+        ROUTES[(method.upper(), path)] = fn
+        return fn
+    return deco
+
+
+# ---- 共通ヘルパ -------------------------------------------------------
+def _user_payload(u):
+    return {"id": u["id"], "name": u["name"],
+            "display_name": u["display_name"], "coins": u["coins"]}
+
+
+# ===== ハンドラ ========================================================
+@route("POST", "/api/register")
+def register(h):
+    body = h.read_json()
+    name = (body.get("name") or "").strip()
+    password = body.get("password") or ""
+    display_name = (body.get("display_name") or "").strip() or name
+    if len(name) &lt; 3 or len(name) &gt; 32:
+        raise bad_request("name は 3〜32 文字")
+    if len(password) &lt; 6:
+        raise bad_request("password は 6 文字以上")
+
+    pass_hash = auth.hash_password(password)             # ← auth モジュール経由
+    try:
+        with get_conn() as conn, conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM users WHERE name = %s", (name,))
+            if cur.fetchone():
+                raise bad_request("その name は既に使われています")
+            cur.execute(
+                "INSERT INTO users (name, pass_hash, display_name) "
+                "VALUES (%s, %s, %s) "
+                "RETURNING id, name, display_name, coins",
+                (name, pass_hash, display_name),
+            )
+            user = cur.fetchone()
+            token, _ = auth.create_session(conn, user["id"])
+    except psycopg.errors.UniqueViolation:
+        # 競合: 並行リクエストで同名登録された場合の最後の防波堤
+        raise bad_request("その name は既に使われています")
+    h.send_json(200, {"user": _user_payload(user), "token": token})
+
+
+@route("POST", "/api/login")
+def login(h):
+    body = h.read_json()
+    name = (body.get("name") or "").strip()
+    password = body.get("password") or ""
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, name, pass_hash, display_name, coins "
+            "FROM users WHERE name = %s",
+            (name,),
+        )
+        user = cur.fetchone()
+        if user is None or not auth.verify_password(password, user["pass_hash"]):
+            raise AppError(401, "name か password が違います")
+        token, _ = auth.create_session(conn, user["id"])
+    h.send_json(200, {"user": _user_payload(user), "token": token})
+
+
+@route("POST", "/api/logout")
+def logout(h):
+    token = h.get_bearer_token()
+    if token:
+        with get_conn() as conn:
+            auth.delete_session(conn, token)
+    h.send_json(200, {"ok": True})
+
+
+@route("GET", "/api/me")
+def me(h):
+    with get_conn() as conn:
+        user = h.require_user(conn)
+    h.send_json(200, {"user": _user_payload(user)})
+
+
+@route("GET", "/api/gacha/list")
+def gacha_list(h):
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute("""
+            SELECT g.id, g.name, g.price,
+                   COUNT(gi.id)               AS pool_size,
+                   COALESCE(SUM(gi.weight), 0) AS total_weight
+              FROM gachas g
+              LEFT JOIN gacha_items gi ON gi.gacha_id = g.id
+             GROUP BY g.id
+             ORDER BY g.id
+        """)
+        rows = cur.fetchall()
+    h.send_json(200, {"gachas": rows})
+
+
+@route("POST", "/api/gacha/pull")
+def gacha_pull(h):
+    body = h.read_json()
+    gacha_id = body.get("gacha_id")
+    if not isinstance(gacha_id, int):
+        raise bad_request("gacha_id は整数で指定してください")
+
+    with get_conn() as conn:
+        user = h.require_user(conn)
+
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, name, price FROM gachas WHERE id = %s FOR SHARE",
+                (gacha_id,),
+            )
+            g = cur.fetchone()
+            if g is None:
+                raise not_found("そのガチャは存在しません")
+
+            cur.execute(
+                "SELECT coins FROM users WHERE id = %s FOR UPDATE",
+                (user["id"],),
+            )
+            coins = cur.fetchone()["coins"]
+            if coins &lt; g["price"]:
+                raise bad_request(
+                    f"コインが足りません (必要 {g['price']} / 所持 {coins})"
+                )
+
+        pool = gacha.fetch_pool(conn, gacha_id)           # ← gacha モジュール経由
+        if not pool:
+            raise bad_request("そのガチャには排出設定がありません")
+        won = gacha.draw(pool)
+
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE users SET coins = coins - %s WHERE id = %s "
+                "RETURNING coins",
+                (g["price"], user["id"]),
+            )
+            new_coins = cur.fetchone()["coins"]
+            cur.execute(
+                "INSERT INTO user_characters (user_id, character_id) "
+                "VALUES (%s, %s) RETURNING obtained_at",
+                (user["id"], won.character_id),
+            )
+            obtained_at = cur.fetchone()["obtained_at"]
+
+    h.send_json(200, {
+        "gacha":     {"id": g["id"], "name": g["name"], "price": g["price"]},
+        "character": {"id": won.character_id, "name": won.name,
+                      "rarity": won.rarity, "emoji": won.emoji},
+        "obtained_at": obtained_at,
+        "coins": new_coins,
+    })
+
+
+@route("GET", "/api/box")
+def box(h):
+    with get_conn() as conn:
+        user = h.require_user(conn)
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT c.id, c.name, c.rarity, c.emoji,
+                       COUNT(*)            AS count,
+                       MIN(uc.obtained_at) AS first_obtained_at,
+                       MAX(uc.obtained_at) AS last_obtained_at
+                  FROM user_characters uc
+                  JOIN characters c ON c.id = uc.character_id
+                 WHERE uc.user_id = %s
+                 GROUP BY c.id
+                 ORDER BY c.rarity DESC, c.id
+            """, (user["id"],))
+            items = cur.fetchall()
+            cur.execute(
+                "SELECT COUNT(*) AS total_pulls FROM user_characters "
+                "WHERE user_id = %s",
+                (user["id"],),
+            )
+            total_pulls = cur.fetchone()["total_pulls"]
+
+    h.send_json(200, {
+        "user": _user_payload(user),
+        "total_pulls": total_pulls,
+        "items": items,
+    })
+
+
+# ===== HTTP ハンドラ + CORS + ディスパッチ ============================
+class GachaHandler(BaseHTTPRequestHandler):
+    def log_message(self, fmt, *args):
+        sys.stderr.write(f"[{self.command}] {self.path} -&gt; {fmt % args}\n")
+
+    def _cors_headers(self):
+        self.send_header("Access-Control-Allow-Origin",  "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+    def send_json(self, status, payload):
+        body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
+        self.send_response(status)
+        self._cors_headers()
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def read_json(self):
+        n = int(self.headers.get("Content-Length", "0"))
+        if n == 0: return {}
+        raw = self.rfile.read(n)
+        try:
+            data = json.loads(raw.decode("utf-8"))
+        except json.JSONDecodeError as e:
+            raise bad_request(f"JSON が読めません: {e}")
+        if not isinstance(data, dict):
+            raise bad_request("JSON の最上位はオブジェクトにしてください")
+        return data
+
+    def get_bearer_token(self):
+        h = self.headers.get("Authorization", "")
+        if not h.lower().startswith("bearer "):
+            return ""
+        return h.split(" ", 1)[1].strip()
+
+    def require_user(self, conn):
+        token = self.get_bearer_token()
+        user = auth.lookup_session(conn, token)
+        if user is None:
+            raise unauthorized()
+        return user
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self._cors_headers()
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def do_GET(self):  self._dispatch("GET")
+    def do_POST(self): self._dispatch("POST")
+
+    def _dispatch(self, method):
+        path = urlparse(self.path).path
+        handler = ROUTES.get((method, path))
+        if handler is None:
+            self.send_json(404, {"error": "Not Found", "path": path})
+            return
+        try:
+            handler(self)
+        except AppError as e:
+            self.send_json(e.status, {"error": e.message})
+        except Exception as e:
+            traceback.print_exc()
+            self.send_json(500, {"error": "internal server error", "detail": str(e)})
+
+
+def main():
+    if not healthcheck():
+        print("PostgreSQL に接続できません。 docker compose up -d を先に。")
+        return 1
+    addr = ("0.0.0.0", APP_PORT)
+    server = ThreadingHTTPServer(addr, GachaHandler)
+    print(f"[gacha_gacha] listening on http://localhost:{APP_PORT}")
+    print("  ルート一覧:")
+    for (m, p) in sorted(ROUTES):
+        print(f"    {m:5s} {p}")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nbye")
+    finally:
+        server.server_close()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())</code></pre>
+    </details>
+
+    <p>
+      これで <code>$HOME\gacha_workspace\myserver.py</code> は削除して構いません
+      (<code>server/</code> 配下に役割別に引っ越しが完了したので、 古いコピーは不要)。
     </p>
 
     <details>
