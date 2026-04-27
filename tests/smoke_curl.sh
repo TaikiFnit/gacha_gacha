@@ -57,7 +57,7 @@ strip_status() { sed -n '/^HTTP_STATUS:/!p'; }
 echo "== 1. register =="
 REG_RAW=$(call POST /api/register \
   "{\"name\":\"$USER_NAME\",\"password\":\"$PASSWORD\",\"display_name\":\"Smoker\"}")
-echo "$REG_RAW" | jq
+echo "$REG_RAW" | strip_status | jq
 
 TOKEN=$(echo "$REG_RAW" | strip_status | jq -r '.token // empty')
 if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
@@ -68,30 +68,30 @@ echo "  -> token: ${TOKEN:0:8}…"
 
 echo
 echo "== 2. me =="
-call_auth GET /api/me | jq
+call_auth GET /api/me | strip_status | jq
 
 echo
 echo "== 3. gacha list (認証不要) =="
-call GET /api/gacha/list | jq
+call GET /api/gacha/list | strip_status | jq
 
 echo
 echo "== 4. pull x 3 =="
 for i in 1 2 3; do
   echo "-- pull $i --"
-  call_auth POST /api/gacha/pull '{"gacha_id":1}' | jq
+  call_auth POST /api/gacha/pull '{"gacha_id":1}' | strip_status | jq
 done
 
 echo
 echo "== 5. box =="
-call_auth GET /api/box | jq
+call_auth GET /api/box | strip_status | jq
 
 echo
 echo "== 6. logout =="
-call_auth POST /api/logout | jq
+call_auth POST /api/logout | strip_status | jq
 
 echo
 echo "== 7. me after logout (expect 401) =="
-call_auth GET /api/me | jq
+call_auth GET /api/me | strip_status | jq
 
 echo
 echo "smoke test finished. user=$USER_NAME"
