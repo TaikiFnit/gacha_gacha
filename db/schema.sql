@@ -19,7 +19,9 @@ CREATE TABLE IF NOT EXISTS users (
     name         TEXT         NOT NULL UNIQUE,
     pass_hash    TEXT         NOT NULL,
     display_name TEXT         NOT NULL,
-    coins        INTEGER      NOT NULL DEFAULT 1000,
+    -- coins は決して負にならない (= ガチャを払えるなら引ける、 払えなければ 400)。
+    -- アプリ側の事前チェックに加えて、 DB 制約でも最後の防波堤を張る。
+    coins        INTEGER      NOT NULL DEFAULT 1000 CHECK (coins >= 0),
     created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
@@ -86,10 +88,12 @@ CREATE INDEX IF NOT EXISTS idx_user_characters_user_char
     ON user_characters(user_id, character_id);
 
 -- ---------------------------------------------------------------------------
--- sessions: クッキーで持つセッショントークン
+-- sessions: Bearer Token で持つセッショントークン
 -- ---------------------------------------------------------------------------
 -- 学習用なので「DB に置く」最も素直な形にしている。
 -- token は十分に長いランダム文字列 (256bit base64url) を入れる。
+-- ログイン時にこの token を JSON で返し、 以降は Authorization: Bearer <token>
+-- ヘッダで送ってもらうことで、 サーバ側で「誰のリクエストか」 を特定する。
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS sessions (
     token      TEXT        PRIMARY KEY,

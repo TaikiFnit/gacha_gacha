@@ -31,6 +31,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable
 from urllib.parse import urlparse
 
+import psycopg
+
 from . import auth, gacha
 from .db import get_conn, healthcheck
 
@@ -95,7 +97,9 @@ class GachaHandler(BaseHTTPRequestHandler):
                 self.send_header("Access-Control-Allow-Credentials", "true")
                 self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        # Authorization は Bearer Token を運ぶのに必要 (CORS preflight の応答に
+        # 含めないと、 ブラウザが本番のリクエストを送らない)
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
     def send_json(self, status: int, payload: Any) -> None:
         body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
@@ -189,21 +193,28 @@ def register(h: GachaHandler) -> None:
         raise bad_request("password は 6 文字以上")
 
     pass_hash = auth.hash_password(password)
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT 1 FROM users WHERE name = %s", (name,))
-            if cur.fetchone():
-                raise bad_request("その name は既に使われています")
-            cur.execute(
-                """
-                INSERT INTO users (name, pass_hash, display_name)
-                VALUES (%s, %s, %s)
-                RETURNING id, name, display_name, coins
-                """,
-                (name, pass_hash, display_name),
-            )
-            user = cur.fetchone()
-        token, _ = auth.create_session(conn, user["id"])
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                # アプリ側の事前チェック: ユーザーに分かりやすいメッセージを返すため。
+                cur.execute("SELECT 1 FROM users WHERE name = %s", (name,))
+                if cur.fetchone():
+                    raise bad_request("その name は既に使われています")
+                cur.execute(
+                    """
+                    INSERT INTO users (name, pass_hash, display_name)
+                    VALUES (%s, %s, %s)
+                    RETURNING id, name, display_name, coins
+                    """,
+                    (name, pass_hash, display_name),
+                )
+                user = cur.fetchone()
+            token, _ = auth.create_session(conn, user["id"])
+    except psycopg.errors.UniqueViolation:
+        # 競合: 上の SELECT と INSERT の間に、 別リクエストが同じ name で先に
+        # 登録した場合。 アプリの事前チェックでは防げないので、 DB 制約 (UNIQUE)
+        # が「最後の防波堤」 として弾く。 これを 400 に変換して返す。
+        raise bad_request("その name は既に使われています")
 
     # Bearer Token はレスポンス本文に含めて返す。
     # クライアントは以後 Authorization: Bearer <token> ヘッダで送る。
@@ -243,7 +254,10 @@ def logout(h: GachaHandler) -> None:
 def me(h: GachaHandler) -> None:
     with get_conn() as conn:
         user = h.require_user(conn)
-    h.send_json(200, {"user": user})
+    # _user_payload を必ず経由させて、 register / login と同じ shape を保つ。
+    # こうしておけば、 lookup_session の SELECT 列を変えても /api/me の
+    # レスポンスに余分なキーが漏れない (= API 仕様と実装が暗黙にズレない)。
+    h.send_json(200, {"user": _user_payload(user)})
 
 
 @route("GET", "/api/gacha/list")
@@ -271,6 +285,18 @@ def gacha_pull(h: GachaHandler) -> None:
     if not isinstance(gacha_id, int):
         raise bad_request("gacha_id は整数で指定してください")
 
+    # =========================================================
+    # ⚠️ 以下のブロック全体が 1 トランザクションです。
+    #     get_conn() のコンテキストが、 例外なしで抜ければ commit、
+    #     例外で抜ければ rollback します。 つまり:
+    #       - 残コインを引いた直後に例外で死んでも、 coins は元に戻る
+    #       - user_characters への INSERT が走った後にバグで死んでも、 履歴も巻き戻る
+    #     この「全部成功 or 全部やらなかったことにする」 性質が原子性 (Atomicity)。
+    #
+    #     さらに、 価格チェック → コイン減算 が「読んでから書く」 形なので、
+    #     並行リクエスト下では FOR UPDATE で users 行をロックして、
+    #     残高が引かれた状態を他のリクエストから観測されないようにしています。
+    # =========================================================
     with get_conn() as conn:
         user = h.require_user(conn)
 
@@ -360,7 +386,7 @@ def box(h: GachaHandler) -> None:
             total_pulls = cur.fetchone()["total_pulls"]
 
     h.send_json(200, {
-        "user": user,
+        "user": _user_payload(user),
         "total_pulls": total_pulls,
         "items": items,
     })
@@ -373,6 +399,19 @@ def main() -> int:
     if not healthcheck():
         print("PostgreSQL に接続できません。`docker compose up -d` を先に。")
         return 1
+
+    # 起動時に期限切れ session を 1 回だけ掃除する。 リクエストパスから
+    # 副作用を切り離すことで、 401 で rollback されて掃除が無駄になる
+    # 問題を避ける。
+    try:
+        with get_conn() as conn:
+            n = auth.purge_expired_sessions(conn)
+            if n:
+                print(f"[gacha_gacha] purged {n} expired session(s)")
+    except Exception as e:    # noqa: BLE001
+        # GC 失敗で起動を止めない (sessions テーブルが無い等の初回起動を許容)
+        print(f"[gacha_gacha] session GC skipped: {e}")
+
     addr = ("0.0.0.0", APP_PORT)
     server = ThreadingHTTPServer(addr, GachaHandler)
     print(f"[gacha_gacha] listening on http://localhost:{APP_PORT}")

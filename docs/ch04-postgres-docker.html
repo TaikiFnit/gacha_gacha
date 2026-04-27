@@ -57,9 +57,9 @@
       <code>~/Downloads/gacha_web/</code>) にまとめて保存してください。
     </p>
     <ul>
-      <li><a href="https://raw.githubusercontent.com/taikifnit/gacha_gacha/master/web/index.html" target="_blank"><code>web/index.html</code></a></li>
-      <li><a href="https://raw.githubusercontent.com/taikifnit/gacha_gacha/master/web/app.js" target="_blank"><code>web/app.js</code></a></li>
-      <li><a href="https://raw.githubusercontent.com/taikifnit/gacha_gacha/master/web/style.css" target="_blank"><code>web/style.css</code></a></li>
+      <li><a href="https://raw.githubusercontent.com/taikifnit/gacha_gacha/main/web/index.html" target="_blank"><code>web/index.html</code></a></li>
+      <li><a href="https://raw.githubusercontent.com/taikifnit/gacha_gacha/main/web/app.js" target="_blank"><code>web/app.js</code></a></li>
+      <li><a href="https://raw.githubusercontent.com/taikifnit/gacha_gacha/main/web/style.css" target="_blank"><code>web/style.css</code></a></li>
     </ul>
 
     <div class="callout note">
@@ -202,7 +202,9 @@ class App(BaseHTTPRequestHandler):
         # 学習用: 全オリジン許可 (= 誰からでも叩いて OK)
         self.send_header("Access-Control-Allow-Origin",  "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        # Authorization ヘッダ (Ch.7 で導入する Bearer Token) を運ぶには
+        # CORS で明示的に許可しておく必要がある
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
     def _read_json(self):
         n = int(self.headers.get("Content-Length", "0"))

@@ -7,7 +7,7 @@ Why this exists:
     handler code runs against an in-memory SQLite. This validates:
       - HTTP routing / status codes
       - JSON request / response shapes
-      - Cookie-based session
+      - Bearer Token authentication (Authorization: Bearer <token>)
       - Password hash + verify
       - Gacha pull flow including coin debit and box append
       - Box aggregation (GROUP BY + COUNT)
@@ -192,9 +192,12 @@ def scenario_register_validation(c: Client) -> None:
     s, _, _ = c.request("POST", "/api/register",
                         {"name": "okuser", "password": "short"})
     expect("password too short -> 400", s == 400, f"got {s}")
-    s, _, _ = c.request("POST", "/api/register",
-                        {"name": "alice", "password": "secret123"})
-    expect("duplicate name -> 400", s == 400, f"got {s}")
+    s, body, _ = c.request("POST", "/api/register",
+                           {"name": "alice", "password": "secret123"})
+    expect("duplicate name -> 400 (not 500)", s == 400, f"got {s}")
+    expect("duplicate name returns user-facing error",
+           "name" in body.get("error", "") or "使われて" in body.get("error", ""),
+           f"got {body!r}")
 
 
 def scenario_gacha(c: Client) -> None:
@@ -241,6 +244,15 @@ def scenario_gacha(c: Client) -> None:
     expect("box items sorted by rarity DESC",
            rarities == sorted(rarities, reverse=True),
            f"got {rarities}")
+    # tie-breaking: same-rarity items are sorted by id ASC
+    from collections import defaultdict
+    ids_per_rarity = defaultdict(list)
+    for it in body["items"]:
+        ids_per_rarity[it["rarity"]].append(it["id"])
+    all_tie_ok = all(ids == sorted(ids) for ids in ids_per_rarity.values())
+    expect("same-rarity items are tie-broken by id ASC",
+           all_tie_ok,
+           f"got {dict(ids_per_rarity)}")
 
 
 def scenario_insufficient_coins() -> None:

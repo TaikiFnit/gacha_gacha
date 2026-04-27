@@ -34,7 +34,7 @@
       <li><code>/api/gacha/pull</code> を本実装 (transaction でくくる)</li>
     </ol>
 
-    <h2>ステップ 0 — テーブルと guest ユーザーを揃える</h2>
+    <h2>5.1 テーブルと guest ユーザーを揃える</h2>
 
     <p>
       Ch.2 で <code>users</code> を作っていますが、 ガチャに必要な情報が足りません。 また、 キャラ / ガチャ筐体 /
@@ -43,26 +43,49 @@
 
     <div class="colab-step">
       <span class="step-tag">📒 セル 5-A — users.coins 列を追加 + guest ユーザー</span>
-<pre><code class="language-sql">%%sql
-ALTER TABLE users ADD COLUMN coins INTEGER NOT NULL DEFAULT 1000;
+<pre><code class="language-python">import sqlite3
+conn = sqlite3.connect("gacha.db")
+conn.row_factory = sqlite3.Row    # Ch.3 で導入したパターン: 結果を dict ライクに扱える
 
-INSERT INTO users (id, name, pass_hash, display_name, coins)
-VALUES (1, 'guest', '', 'ゲスト', 1000)
-ON CONFLICT DO NOTHING;
+# 既に coins 列を足してあったら何もしない (= 冪等)
+cols = {row["name"] for row in conn.execute("PRAGMA table_info(users)")}
+if "coins" not in cols:
+    conn.execute("ALTER TABLE users ADD COLUMN coins INTEGER NOT NULL DEFAULT 1000")
 
-SELECT * FROM users;</code></pre>
+# guest ユーザー (Ch.7 でちゃんとした認証を入れるまでの仮ユーザー)
+conn.execute("""
+    INSERT INTO users (id, name, display_name, coins)
+    VALUES (1, 'guest', 'ゲスト', 1000)
+    ON CONFLICT DO NOTHING
+""")
+conn.commit()
+
+for row in conn.execute("SELECT * FROM users"):
+    print(dict(row))
+conn.close()</code></pre>
     </div>
 
     <details>
-      <summary>📚 コラム: <code>ALTER TABLE</code> と <code>ON CONFLICT DO NOTHING</code></summary>
+      <summary>📚 コラム: <code>ALTER TABLE</code> / <code>PRAGMA table_info</code> / <code>ON CONFLICT DO NOTHING</code></summary>
       <p>
         <strong><code>ALTER TABLE</code></strong>: 既存テーブルの定義を変える SQL。 列を追加 / 削除 / 型変更 などに使う。
         本番運用では「データを壊さずスキーマだけ変える」 のが鉄則で、 列追加は安全だが型変更や削除は要注意。
       </p>
       <p>
+        <strong><code>PRAGMA table_info(users)</code></strong>: SQLite が用意している
+        「テーブルの構造を覗く」 命令。 戻ってくる行の 2 列目が列名。
+        既に <code>coins</code> 列があるか確認してから <code>ALTER TABLE</code> を実行することで、
+        このセルを<strong>何度実行しても安全</strong>になります (= 冪等)。
+      </p>
+      <p>
         <strong><code>ON CONFLICT DO NOTHING</code></strong>: SQLite/Postgres の便利機能。
         UNIQUE 制約や PRIMARY KEY と衝突する INSERT があったとき、 エラーにせずに「何もしない」 で終わる。
         スクリプトを何度実行しても結果が変わらない (= 冪等性) を作るのに使う。
+      </p>
+      <p>
+        <strong>パスワードはまだ扱わない</strong>。 この章ではガチャの仕組みに集中したいので、
+        ユーザーは <code>guest</code> 1 人固定で進めます。 本物の register / login と
+        <code>pass_hash</code> 列の追加は Ch.7 で扱います。
       </p>
     </details>
 
@@ -160,7 +183,7 @@ SELECT
       </p>
     </details>
 
-    <h2>ステップ 1 — <code>/api/me</code> を実 DB から</h2>
+    <h2>5.2 <code>/api/me</code> を実 DB から</h2>
 
     <p>
       Ch.4 末で <code>/api/me</code> はハードコードで guest を返していました。 これを<strong>実 DB の guest 行</strong>
@@ -236,7 +259,7 @@ cur = conn.execute("SELECT * FROM users WHERE name = ?", (name,))</code></pre>
       </p>
     </details>
 
-    <h2>ステップ 2 — <code>/api/gacha/list</code> を実 DB から</h2>
+    <h2>5.3 <code>/api/gacha/list</code> を実 DB から</h2>
 
     <p>
       ガチャ筐体一覧は <code>gachas</code> テーブルから取ってくる。 ついでに「排出キャラ数」 と「weight 合計」 も
@@ -274,7 +297,7 @@ print("✅ /api/gacha/list が実 DB から返すように")</code></pre>
       <li>seed の数字 (合計 weight = 505 / 175) と一致</li>
     </ul>
 
-    <h2>ステップ 3 — 重み付き乱択 (<code>draw</code> 関数)</h2>
+    <h2>5.4 重み付き乱択 (<code>draw</code> 関数)</h2>
 
     <p>
       ガチャの肝は<strong>「キャラごとに違う出やすさ」</strong>。 これを「乱数 + weight」 で実装します。
@@ -380,7 +403,33 @@ for p in sorted(pool, key=lambda x: -x.weight):
       <strong>大数の法則</strong> — 多数回試行すれば実測は理論値に近づく。 これが出ていれば抽選アルゴリズムは正しく実装できています。
     </p>
 
-    <h2>ステップ 4 — <code>/api/gacha/pull</code> を本実装</h2>
+    <details>
+      <summary>📚 コラム: <code>GachaItem(**dict(r))</code> はなぜ動くのか — 列名と dataclass フィールドの暗黙契約</summary>
+      <p>
+        <code>fetch_pool</code> の最後で <code>GachaItem(**dict(r))</code> と書いていますが、 これは
+        SELECT で取った列名が、 そのまま <code>GachaItem</code> dataclass のフィールド名として渡る、
+        という<strong>名前の一致</strong>に依存しています:
+      </p>
+<pre><code class="language-python">SELECT c.id AS character_id,    # ← dataclass.character_id に渡る
+       c.name,                   # ← dataclass.name
+       c.rarity,                 # ← dataclass.rarity
+       c.emoji,                  # ← dataclass.emoji
+       gi.weight                 # ← dataclass.weight
+  FROM ...</code></pre>
+      <p>
+        ここで重要なのは <code>c.id AS character_id</code> の <strong><code>AS</code></strong>。
+        これがないと SELECT の結果は <code>id</code> という列名になり、 dataclass には
+        <code>id</code> というフィールドが無いので <code>TypeError</code> で死にます。
+        SQL を 1 文字でも変えると壊れる、 という<strong>暗黙の契約</strong>がここに張ってある、
+        と認識しておくと、 後で「なぜ AS が必要か」 「なぜ列を増やしたら例外が飛んだか」 が分かりやすくなります。
+      </p>
+      <p>
+        本番コード (<code>server/gacha.py</code>) も同じ書き方をしています。
+        SQL を編集するときは、 dataclass のフィールド名と一致しているか必ず確認しましょう。
+      </p>
+    </details>
+
+    <h2>5.5 <code>/api/gacha/pull</code> を本実装</h2>
 
     <p>
       ガチャを 1 回引く処理に必要なステップ:
@@ -519,7 +568,7 @@ SELECT name, coins FROM users WHERE id = 1;</code></pre>
       引いた回数だけ <code>user_characters</code> に行が増え、 <code>users.coins</code> がぴったり減っている (= 整合性)。
     </p>
 
-    <h2>5.5 ハードコードのまま残しているもの</h2>
+    <h2>5.6 ハードコードのまま残しているもの</h2>
     <table>
       <thead><tr><th>API</th><th>状態</th><th>本物にするのは</th></tr></thead>
       <tbody>

@@ -41,7 +41,7 @@
       <li>既存の pull / box / me を「ログイン中ユーザーの操作」 に書き換え</li>
     </ol>
 
-    <h2>ステップ 1 — register をハードコード → 実 INSERT に</h2>
+    <h2>7.1 register をハードコード → 実 INSERT に</h2>
 
     <p>
       Ch.4 末でハードコードした <code>POST /api/register</code>:
@@ -53,7 +53,35 @@ def register(h):
     h._json(200, {"user": {"id": 1, "name": name, ...}})</code></pre>
 
     <p>
-      これを実 DB に INSERT する形に。 とりあえず<strong>パスワードはまだ平文</strong>のまま (ハッシュ化は次のステップで)。
+      これを実 DB に INSERT する形に。 ただし、 Ch.5 で作った <code>users</code> テーブルには
+      まだ <code>pass_hash</code> 列がありません。 まず列を追加します。
+    </p>
+
+    <div class="colab-step">
+      <span class="step-tag">📒 セル 7-A0 — users に pass_hash 列を追加 (冪等)</span>
+<pre><code class="language-python">import sqlite3
+conn = sqlite3.connect("gacha.db")
+conn.row_factory = sqlite3.Row
+
+cols = {row["name"] for row in conn.execute("PRAGMA table_info(users)")}
+if "pass_hash" not in cols:
+    # 既存行 (guest) は空文字を入れて埋める。 後でログイン不可にする目印になる
+    conn.execute("ALTER TABLE users ADD COLUMN pass_hash TEXT NOT NULL DEFAULT ''")
+    print("✅ pass_hash 列を追加")
+else:
+    print("ℹ️ pass_hash 列は既に存在")
+
+conn.commit()
+conn.close()</code></pre>
+    </div>
+
+    <p>
+      <strong>このセルは何度実行しても安全</strong>です。 既に列がある場合は何もしません。
+      これで <code>users</code> テーブルは <code>id / name / display_name / created_at / coins / pass_hash</code> の 6 列になりました。
+    </p>
+
+    <p>
+      とりあえず<strong>パスワードはまだ平文</strong>のまま登録する形にします (ハッシュ化は次のステップで)。
     </p>
 
     <div class="colab-step">
@@ -102,7 +130,7 @@ print("✅ /api/register が実 INSERT に (まだ平文)")</code></pre>
       <li>Colab で <code>%%sql SELECT * FROM users;</code> → guest と alice の 2 行がある (alice の pass_hash は<strong>平文 "secret123"</strong>!)</li>
     </ul>
 
-    <h2>ステップ 2 — パスワードをハッシュ化</h2>
+    <h2>7.2 パスワードをハッシュ化</h2>
 
     <p>
       DB に平文でパスワードを保存するのは大事故の温床。 「DB 漏洩 → 即全員のパスバレ」 となる。
@@ -256,7 +284,7 @@ print("✅ register/login がハッシュ化版に")</code></pre>
       ここまでで「登録できる」 「ログインできる」 が揃った。 でも問題は「次のリクエストでサーバが、 ログイン中の人を覚えていない」 こと。
     </p>
 
-    <h2>ステップ 3 — sessions テーブル + Bearer Token</h2>
+    <h2>7.3 sessions テーブル + Bearer Token</h2>
 
     <details>
       <summary>📚 コラム: HTTP はステートレス</summary>
@@ -391,7 +419,7 @@ def login(h):
 print("✅ register / login が token を返すように")</code></pre>
     </div>
 
-    <h2>ステップ 4 — <code>require_user</code> ヘルパ + /api/me /logout を本物に</h2>
+    <h2>7.4 <code>require_user</code> ヘルパ + /api/me /logout を本物に</h2>
 
     <p>
       認証必須エンドポイントの先頭で呼ぶヘルパ関数を作ります。
@@ -442,7 +470,7 @@ print("✅ /api/me と /api/logout がセッション対応に")</code></pre>
       <li>リロードしても、 トークンが localStorage にあるので /api/me 200 で復帰</li>
     </ol>
 
-    <h2>ステップ 5 — 既存の pull / box を「ログイン中ユーザー」 に紐づける</h2>
+    <h2>7.5 既存の pull / box を「ログイン中ユーザー」 に紐づける</h2>
 
     <p>
       Ch.5/6 で書いた <code>/api/gacha/pull</code> と <code>/api/box</code> は <code>user_id = 1</code> でハードコードしていました。

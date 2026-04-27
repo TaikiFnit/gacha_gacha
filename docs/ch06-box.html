@@ -31,7 +31,7 @@
       <li><code>/api/box</code> ハンドラを書いて、 通算引いた回数 (<code>total_pulls</code>) も返す</li>
     </ol>
 
-    <h2>ステップ 1 — JOIN: 履歴とマスタを 1 枚に</h2>
+    <h2>6.1 JOIN: 履歴とマスタを 1 枚に</h2>
 
     <p>
       <code>user_characters</code> テーブルには <code>character_id</code> しか入っていません。
@@ -81,7 +81,7 @@ SELECT uc.id AS uc_id, c.name, c.rarity, c.emoji, uc.obtained_at
       出る (= 履歴なので重複を許す)。 これを 1 行にまとめるのが次のステップ。
     </p>
 
-    <h2>ステップ 2 — GROUP BY + COUNT で「個数別」 にまとめる</h2>
+    <h2>6.2 GROUP BY + COUNT で「個数別」 にまとめる</h2>
 
     <figure>
       <img src="./assets/figs/gacha-groupby.svg" alt="GROUP BY character_id で行が束ねられる図"
@@ -129,7 +129,7 @@ SELECT c.id, c.name, c.rarity, c.emoji,
       「初めて獲得した日時」 「最後に獲得した日時」 も 1 つのクエリで出せます。
     </p>
 
-    <h2>ステップ 3 — <code>/api/box</code> ハンドラを書く</h2>
+    <h2>6.3 <code>/api/box</code> ハンドラを書く</h2>
 
     <p>フロントが期待する shape:</p>
 <pre><code class="language-json">{

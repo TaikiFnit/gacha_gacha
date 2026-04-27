@@ -19,17 +19,21 @@ import psycopg
 from psycopg.rows import dict_row
 
 
-def _dsn() -> str:
-    """環境変数から接続文字列を組み立てる。
+def _conn_params() -> dict:
+    """環境変数から接続パラメータの dict を組み立てる。
 
-    .env 等で設定された値を優先し、無ければ docker-compose のデフォルトを使う。
+    .env 等で設定された値を優先し、 無ければ docker-compose のデフォルトを使う。
+    psycopg には connection string ではなく <strong>kwargs</strong> として渡す。
+    こうしておくと、 接続失敗時に psycopg が例外メッセージへ DSN 全体を載せる
+    挙動でも、 password がそのまま stderr に出てしまう事故を避けやすい。
     """
-    host = os.getenv("PGHOST", "localhost")
-    port = os.getenv("PGPORT", "5432")
-    db = os.getenv("PGDATABASE", "gacha")
-    user = os.getenv("PGUSER", "gacha")
-    pw = os.getenv("PGPASSWORD", "gacha")
-    return f"host={host} port={port} dbname={db} user={user} password={pw}"
+    return dict(
+        host=os.getenv("PGHOST", "localhost"),
+        port=os.getenv("PGPORT", "5432"),
+        dbname=os.getenv("PGDATABASE", "gacha"),
+        user=os.getenv("PGUSER", "gacha"),
+        password=os.getenv("PGPASSWORD", "gacha"),
+    )
 
 
 @contextmanager
@@ -44,7 +48,7 @@ def get_conn() -> Iterator[psycopg.Connection]:
     """
     # row_factory=dict_row を指定すると、結果が tuple ではなく dict で返る。
     # クライアントへ JSON で返したい今回の用途と相性が良い。
-    conn = psycopg.connect(_dsn(), row_factory=dict_row, autocommit=False)
+    conn = psycopg.connect(**_conn_params(), row_factory=dict_row, autocommit=False)
     try:
         yield conn
         conn.commit()

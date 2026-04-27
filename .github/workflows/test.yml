@@ -1,0 +1,35 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  unit-and-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # 教材本体は Python 標準ライブラリしか使わない。
+      # E2E (test_e2e_sqlite.py) は psycopg を import する箇所をモックするため
+      # ここで psycopg 自体をインストールする必要は無い。
+      # ただし psycopg.errors を import する経路があるので、 念のため
+      # binary 版を入れておく (失敗しても fallback で進める)。
+      - name: Install Python deps (best-effort)
+        run: |
+          python -m pip install --upgrade pip
+          pip install "psycopg[binary]" || echo "psycopg install skipped"
+
+      - name: Unit tests (auth / gacha 抽選分布)
+        run: python tests/test_unit.py
+
+      - name: E2E tests against SQLite adapter
+        run: python tests/test_e2e_sqlite.py

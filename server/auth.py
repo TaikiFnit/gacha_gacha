@@ -8,7 +8,8 @@
   という考え方を体感するのが目的。
 
 - セッション: 32 byte の暗号学的乱数を base64url にして DB に保存する。
-  クライアントには Set-Cookie で返す。
+  クライアントには JSON レスポンスの ``token`` フィールドで返し、 以降は
+  ``Authorization: Bearer <token>`` ヘッダで送ってもらう (Bearer Token 方式)。
 """
 
 from __future__ import annotations
@@ -94,7 +95,14 @@ def create_session(conn: psycopg.Connection, user_id: int) -> tuple[str, datetim
 
 
 def lookup_session(conn: psycopg.Connection, token: str) -> Optional[dict]:
-    """token から user 情報を引く。期限切れは None を返す + 自動削除。"""
+    """token から user 情報を引く。 期限切れ / 不一致は None。
+
+    本関数は<strong>副作用を持たない</strong> (= DB を書き換えない)。
+    require_user 経由で 401 を投げるリクエストでは、 db.py のコンテキスト
+    マネージャが rollback するため、 ここで DELETE を発行しても消える。
+    期限切れ session の掃除は ``purge_expired_sessions()`` で起動時に一括
+    で行う。
+    """
     if not token:
         return None
     with conn.cursor() as cur:
@@ -111,7 +119,6 @@ def lookup_session(conn: psycopg.Connection, token: str) -> Optional[dict]:
     if row is None:
         return None
     if row["expires_at"] <= datetime.now(timezone.utc):
-        delete_session(conn, token)
         return None
     return {
         "id": row["id"],
@@ -124,3 +131,14 @@ def lookup_session(conn: psycopg.Connection, token: str) -> Optional[dict]:
 def delete_session(conn: psycopg.Connection, token: str) -> None:
     with conn.cursor() as cur:
         cur.execute("DELETE FROM sessions WHERE token = %s", (token,))
+
+
+def purge_expired_sessions(conn: psycopg.Connection) -> int:
+    """期限切れ session を一括削除する。 サーバ起動時に呼ぶ想定。
+
+    返り値は削除件数。
+    """
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM sessions WHERE expires_at <= NOW()")
+        # psycopg の rowcount は「直前の execute が影響を与えた行数」
+        return cur.rowcount

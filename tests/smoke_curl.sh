@@ -12,21 +12,26 @@
 #
 # 既定では http://localhost:8000 / ユーザー名 smoke_user に対して動作。
 # -e BASE_URL=http://... / -e USER=foo で上書き可。
+#
+# 認証は Bearer Token。 register/login のレスポンス JSON 内 token を、
+# 以降の認証付きリクエストで Authorization: Bearer <token> として送る。
 # ----------------------------------------------------------------------------
 set -euo pipefail
 
 BASE_URL=${BASE_URL:-http://localhost:8000}
 USER_NAME=${USER:-smoke_user_$$}
 PASSWORD=${PASSWORD:-smokepass123}
-COOKIES=$(mktemp)
-trap 'rm -f "$COOKIES"' EXIT
 
-JQ=$(command -v jq || true)
-fmt() { if [ -n "$JQ" ]; then $JQ; else cat; fi; }
+if ! command -v jq >/dev/null 2>&1; then
+  echo "ERROR: このスクリプトは jq を必須とします (token 抽出に使用)" >&2
+  echo "       brew install jq / apt install jq などで入れてください" >&2
+  exit 1
+fi
 
+# ----- 認証なしで叩く -----
 call() {
   local method=$1 path=$2 body=${3:-}
-  local args=( -sS -X "$method" -b "$COOKIES" -c "$COOKIES"
+  local args=( -sS -X "$method"
                -H "Content-Type: application/json"
                -w '\nHTTP_STATUS:%{http_code}\n'
                "$BASE_URL$path" )
@@ -34,35 +39,59 @@ call() {
   curl "${args[@]}"
 }
 
+# ----- Bearer Token を付けて叩く -----
+call_auth() {
+  local method=$1 path=$2 body=${3:-}
+  local args=( -sS -X "$method"
+               -H "Content-Type: application/json"
+               -H "Authorization: Bearer $TOKEN"
+               -w '\nHTTP_STATUS:%{http_code}\n'
+               "$BASE_URL$path" )
+  [ -n "$body" ] && args+=( -d "$body" )
+  curl "${args[@]}"
+}
+
+# レスポンス本文 (HTTP_STATUS 行を除く) を取り出すヘルパ
+strip_status() { sed -n '/^HTTP_STATUS:/!p'; }
+
 echo "== 1. register =="
-call POST /api/register "{\"name\":\"$USER_NAME\",\"password\":\"$PASSWORD\",\"display_name\":\"Smoker\"}" | fmt
+REG_RAW=$(call POST /api/register \
+  "{\"name\":\"$USER_NAME\",\"password\":\"$PASSWORD\",\"display_name\":\"Smoker\"}")
+echo "$REG_RAW" | jq
+
+TOKEN=$(echo "$REG_RAW" | strip_status | jq -r '.token // empty')
+if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+  echo "ERROR: register のレスポンスに token が入っていません" >&2
+  exit 1
+fi
+echo "  -> token: ${TOKEN:0:8}…"
 
 echo
 echo "== 2. me =="
-call GET /api/me | fmt
+call_auth GET /api/me | jq
 
 echo
-echo "== 3. gacha list =="
-call GET /api/gacha/list | fmt
+echo "== 3. gacha list (認証不要) =="
+call GET /api/gacha/list | jq
 
 echo
 echo "== 4. pull x 3 =="
 for i in 1 2 3; do
   echo "-- pull $i --"
-  call POST /api/gacha/pull '{"gacha_id":1}' | fmt
+  call_auth POST /api/gacha/pull '{"gacha_id":1}' | jq
 done
 
 echo
 echo "== 5. box =="
-call GET /api/box | fmt
+call_auth GET /api/box | jq
 
 echo
 echo "== 6. logout =="
-call POST /api/logout | fmt
+call_auth POST /api/logout | jq
 
 echo
 echo "== 7. me after logout (expect 401) =="
-call GET /api/me | fmt
+call_auth GET /api/me | jq
 
 echo
 echo "smoke test finished. user=$USER_NAME"

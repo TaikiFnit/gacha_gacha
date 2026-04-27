@@ -289,7 +289,17 @@ function showFeedback(title, result) {
 function clearFeedback() { $("feedback").hidden = true; $("feedback").innerHTML = ""; }
 
 // ---- 期待 shape (= API 仕様) -------------------------------------------------
+//
+// ⚠️ 重要: この SHAPE 定義は docs/api-spec.html の「フロントが期待する shape」
+// セクションと内容を一致させる必要があります (= 手動同期)。 サーバ
+// (server/app.py) のレスポンス構造を変えるときは、 この 2 箇所と api-spec の
+// 「エンドポイント一覧」 のレスポンス例も合わせて更新してください。
 const SHAPE = {
+  // /api/register, /api/login: user に加えて token (Bearer) が必須
+  auth: {
+    user: { id: "number", name: "string", display_name: "string", coins: "number" },
+    token: "string",
+  },
   user: { user: { id: "number", name: "string", display_name: "string", coins: "number" } },
   ok:   { ok: "boolean" },
   gachas: { gachas: [{ id: "number", name: "string", price: "number", pool_size: "number" }] },
@@ -347,9 +357,9 @@ $("auth-form").addEventListener("submit", async (ev) => {
   if (mode === "register") {
     payload.display_name = fd.get("display_name") || fd.get("name");
   }
-  const r = await call("POST", `/api/${mode}`, { body: payload, expect: SHAPE.user });
+  const r = await call("POST", `/api/${mode}`, { body: payload, expect: SHAPE.auth });
   if (r.shapeOk) {
-    if (r.json.token) setToken(r.json.token);   // Bearer トークンを保存
+    setToken(r.json.token);   // Bearer トークンを保存 (shape チェックで必須なので必ず存在)
     setUser(r.json.user);
     await loadAfterLogin();
   } else {

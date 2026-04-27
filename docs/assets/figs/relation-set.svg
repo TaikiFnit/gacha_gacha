@@ -1,89 +1,88 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 350">
+<!--
+  「リレーション = タプルの集合」 を視覚化した図
+  本リポジトリ用のオリジナル作画。 ライセンスは LICENSE (MIT) に従う。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 360" role="img"
+     aria-label="テーブル形式のリレーションが、 タプル (行) の集合と等価である様子">
   <defs>
-    <marker id="arrow-main" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
-      <polygon points="0 0, 10 3.5, 0 7" fill="#1a1a2e"/>
+    <marker id="se-arr" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#4f46e5"/>
     </marker>
+    <style>
+      .frame { fill: #ffffff; stroke: #1f2937; stroke-width: 2; }
+      .head  { fill: #e0e7ff; stroke: #1f2937; stroke-width: 2; }
+      .alt   { fill: #f9fafb; }
+      .grid  { stroke: #1f2937; stroke-width: 1; }
+      .head-text { font: 700 14px sans-serif; fill: #1f2937; text-anchor: middle; }
+      .cell  { font: 14px sans-serif; fill: #1f2937; text-anchor: middle; }
+      .caption { font: 700 14px sans-serif; fill: #1f2937; text-anchor: middle; }
+      .equal { font: 700 28px sans-serif; fill: #4f46e5; text-anchor: middle; }
+      .set-bg { fill: #ede9fe; stroke: #4f46e5; stroke-width: 2; stroke-dasharray: 4 4; }
+      .set-tag { font: 13px monospace; fill: #4f46e5; text-anchor: middle; }
+      .tuple { fill: #ffffff; stroke: #4f46e5; stroke-width: 1.5; }
+      .tuple-text { font: 13px sans-serif; fill: #1f2937; text-anchor: middle; }
+      .property { font: 13px sans-serif; fill: #4338ca; text-anchor: middle; }
+    </style>
   </defs>
 
-  <!-- Left side: Table -->
-  <g transform="translate(30, 40)">
-    <!-- Table border -->
-    <rect x="0" y="0" width="240" height="190" rx="4" ry="4" fill="none" stroke="#1a1a2e" stroke-width="2.5"/>
+  <!-- ============== Left: Table ============== -->
+  <g transform="translate(40, 60)">
+    <rect class="frame" x="0" y="0" width="270" height="200" rx="6"/>
+    <rect class="head"  x="0" y="0" width="270" height="44" rx="6"/>
+    <rect class="head"  x="0" y="22" width="270" height="22"/>
+    <line class="grid"  x1="0"  y1="44"  x2="270" y2="44"/>
+    <line class="grid"  x1="80" y1="0"   x2="80"  y2="200"/>
+    <line class="grid"  x1="180" y1="0"  x2="180" y2="200"/>
+    <text class="head-text" x="40"  y="29">id</text>
+    <text class="head-text" x="130" y="29">name</text>
+    <text class="head-text" x="225" y="29">age</text>
 
-    <!-- Header row -->
-    <rect x="0" y="0" width="240" height="48" rx="4" ry="4" fill="#fecaca" stroke="#1a1a2e" stroke-width="2.5"/>
-    <rect x="1" y="28" width="238" height="20" fill="#fecaca"/>
-    <line x1="0" y1="48" x2="240" y2="48" stroke="#1a1a2e" stroke-width="2.5"/>
+    <text class="cell" x="40"  y="73">1</text>
+    <text class="cell" x="130" y="73">田中</text>
+    <text class="cell" x="225" y="73">22</text>
+    <line class="grid" x1="0" y1="96" x2="270" y2="96"/>
 
-    <!-- Header text -->
-    <text x="40" y="30" text-anchor="middle" font-family="sans-serif" font-size="15" font-weight="bold" fill="#1a1a2e">id</text>
-    <text x="120" y="30" text-anchor="middle" font-family="sans-serif" font-size="15" font-weight="bold" fill="#1a1a2e">name</text>
-    <text x="200" y="30" text-anchor="middle" font-family="sans-serif" font-size="15" font-weight="bold" fill="#1a1a2e">age</text>
+    <rect class="alt" x="2" y="97" width="266" height="50"/>
+    <text class="cell" x="40"  y="125">2</text>
+    <text class="cell" x="130" y="125">佐藤</text>
+    <text class="cell" x="225" y="125">17</text>
+    <line class="grid" x1="0" y1="148" x2="270" y2="148"/>
 
-    <!-- Column separators -->
-    <line x1="80" y1="0" x2="80" y2="190" stroke="#1a1a2e" stroke-width="1"/>
-    <line x1="160" y1="0" x2="160" y2="190" stroke="#1a1a2e" stroke-width="1"/>
+    <text class="cell" x="40"  y="177">3</text>
+    <text class="cell" x="130" y="177">鈴木</text>
+    <text class="cell" x="225" y="177">25</text>
 
-    <!-- Data row 1 (white) -->
-    <rect x="1" y="49" width="238" height="46" fill="#ffffff"/>
-    <text x="40" y="78" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#1a1a2e">1</text>
-    <text x="120" y="78" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#1a1a2e">田中</text>
-    <text x="200" y="78" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#1a1a2e">22</text>
-    <line x1="0" y1="95" x2="240" y2="95" stroke="#1a1a2e" stroke-width="1"/>
-
-    <!-- Data row 2 (light grey) -->
-    <rect x="1" y="96" width="238" height="46" fill="#f9fafb"/>
-    <text x="40" y="125" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#1a1a2e">2</text>
-    <text x="120" y="125" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#1a1a2e">佐藤</text>
-    <text x="200" y="125" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#1a1a2e">17</text>
-    <line x1="0" y1="142" x2="240" y2="142" stroke="#1a1a2e" stroke-width="1"/>
-
-    <!-- Data row 3 (white) -->
-    <rect x="1" y="143" width="238" height="46" fill="#ffffff"/>
-    <text x="40" y="172" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#1a1a2e">3</text>
-    <text x="120" y="172" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#1a1a2e">鈴木</text>
-    <text x="200" y="172" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#1a1a2e">25</text>
-
-    <!-- Label under table -->
-    <text x="120" y="215" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="bold" fill="#1a1a2e">テーブル表現</text>
+    <text class="caption" x="135" y="230">テーブルでの見え方</text>
   </g>
 
-  <!-- Arrow from table to set -->
-  <line x1="310" y1="135" x2="410" y2="135" stroke="#1a1a2e" stroke-width="2.5" marker-end="url(#arrow-main)"/>
-  <text x="360" y="120" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="bold" fill="#1a1a2e">=</text>
+  <!-- ============== Center: equals sign ============== -->
+  <text class="equal" x="370" y="170">=</text>
 
-  <!-- Right side: Set (ellipse) -->
-  <g transform="translate(430, 10)">
-    <!-- Ellipse -->
-    <ellipse cx="165" cy="130" rx="155" ry="120" fill="#dbeafe" stroke="#3b82f6" stroke-width="2.5"/>
+  <!-- ============== Right: Set (rounded rect, dashed) ============== -->
+  <g transform="translate(420, 50)">
+    <rect class="set-bg" x="0" y="0" width="340" height="220" rx="20"/>
+    <text class="set-tag" x="170" y="24">{ tuple, tuple, tuple, ... }</text>
 
-    <!-- Set label at top -->
-    <text x="165" y="35" text-anchor="middle" font-family="sans-serif" font-size="13" fill="#3b82f6">{ タプルの集合 }</text>
-
-    <!-- Tuple elements scattered (not in order) -->
-    <!-- Tuple 3 (top-left area) -->
-    <g>
-      <rect x="40" y="55" width="190" height="32" rx="14" ry="14" fill="#ffffff" stroke="#3b82f6" stroke-width="1.5"/>
-      <text x="135" y="76" text-anchor="middle" font-family="sans-serif" font-size="13" fill="#1a1a2e">(3, 鈴木, 25)</text>
+    <!-- tuples scattered (not in original row order, to emphasize unordered) -->
+    <g transform="translate(45, 50)">
+      <rect class="tuple" x="0" y="0" width="170" height="34" rx="14"/>
+      <text class="tuple-text" x="85" y="22">(3, 鈴木, 25)</text>
+    </g>
+    <g transform="translate(120, 105)">
+      <rect class="tuple" x="0" y="0" width="170" height="34" rx="14"/>
+      <text class="tuple-text" x="85" y="22">(1, 田中, 22)</text>
+    </g>
+    <g transform="translate(60, 158)">
+      <rect class="tuple" x="0" y="0" width="170" height="34" rx="14"/>
+      <text class="tuple-text" x="85" y="22">(2, 佐藤, 17)</text>
     </g>
 
-    <!-- Tuple 1 (center area) -->
-    <g>
-      <rect x="70" y="110" width="190" height="32" rx="14" ry="14" fill="#ffffff" stroke="#3b82f6" stroke-width="1.5"/>
-      <text x="165" y="131" text-anchor="middle" font-family="sans-serif" font-size="13" fill="#1a1a2e">(1, 田中, 22)</text>
-    </g>
+    <text class="caption" x="170" y="245">タプルの集合 (リレーション)</text>
+  </g>
 
-    <!-- Tuple 2 (bottom area) -->
-    <g>
-      <rect x="55" y="165" width="190" height="32" rx="14" ry="14" fill="#ffffff" stroke="#3b82f6" stroke-width="1.5"/>
-      <text x="150" y="186" text-anchor="middle" font-family="sans-serif" font-size="13" fill="#1a1a2e">(2, 佐藤, 17)</text>
-    </g>
-
-    <!-- Properties below ellipse -->
-    <text x="165" y="275" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="bold" fill="#1e40af">&#x2713; 重複がない（各要素は一意）</text>
-    <text x="165" y="300" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="bold" fill="#1e40af">&#x2713; 順序がない（並びは不定）</text>
-
-    <!-- Label under set -->
-    <text x="165" y="335" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="bold" fill="#1a1a2e">集合表現</text>
+  <!-- bottom captions -->
+  <g transform="translate(0, 320)">
+    <text class="property" x="200" y="0">→ 各タプルは一意 (重複なし)</text>
+    <text class="property" x="600" y="0">→ タプルの並び順に意味なし</text>
   </g>
 </svg>

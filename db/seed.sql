@@ -4,7 +4,22 @@
 -- ・ガチャ筐体 2 個 (通常ガチャ / レアガチャ)
 -- ・各ガチャの排出設定
 --
--- ON CONFLICT DO NOTHING を付けてあるので、何度実行しても二重投入されない。
+-- ON CONFLICT DO NOTHING を付けてあるので、 何度実行しても二重投入されない。
+--
+-- ⚠️ id を手で振っている理由:
+--   gacha_items が character_id / gacha_id を数値で直接参照しているため、
+--   seed の段階で id が確定している必要がある。 BIGSERIAL に任せると、
+--   再実行や追加投入で id がズレて gacha_items の参照が壊れ得る。
+--   下の SELECT setval(...) は、 手で振った最大 id まで sequence を進める。
+--
+-- 🔁 DB を完全にリセットしたい場合:
+--   docker compose down -v   # ボリュームごと消す
+--   docker compose up -d     # schema.sql + seed.sql が再投入される
+--
+--   または既存 DB に対して:
+--     TRUNCATE characters, gachas, gacha_items, user_characters,
+--              users, sessions RESTART IDENTITY CASCADE;
+--     \i db/seed.sql
 -- ===========================================================================
 
 INSERT INTO characters (id, name, rarity, emoji) VALUES

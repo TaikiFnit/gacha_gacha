@@ -281,9 +281,28 @@ INSERT INTO users (name, display_name) VALUES ('alice', '別人だよ');</code><
     </div>
 
     <p>
-      この <code>UNIQUE constraint failed</code> こそが、 第 5 章で <code>POST /api/register</code>
-      の重複チェックを <em>アプリ側で書かなくていい理由</em> です (= DB が代わりに守ってくれる)。
+      この <code>UNIQUE constraint failed</code> こそが、 第 7 章で <code>POST /api/register</code>
+      の重複登録を防ぐ<strong>最後の防波堤</strong>になります。 アプリ側でも事前に
+      <code>SELECT 1 FROM users WHERE name = ?</code> で重複チェックして
+      ユーザーに分かりやすいエラーメッセージを返しますが、 同時に同じ name で 2 件登録された場合
+      (= 競合) は事前チェックだけでは防げません。 そこで、 <strong>DB が UNIQUE 違反として弾く</strong>
+      ことで「データの一意性」 だけは絶対に守れる、 という二段構えにします。
     </p>
+    <details>
+      <summary>📚 コラム: 「アプリで書く」 vs 「DB が守る」</summary>
+      <p>
+        どちらも書きます。 役割が違うだけです:
+      </p>
+      <ul>
+        <li><strong>アプリ側のバリデーション</strong>: ユーザー体験のため (分かりやすいメッセージ、 早く返す)</li>
+        <li><strong>DB 制約</strong>: データ整合性のため (競合・バグ・直接 SQL 実行など、 アプリを通らない経路でも守る)</li>
+      </ul>
+      <p>
+        Ch.7 の <code>register</code> 実装では、 事前に <code>SELECT</code> で確認しつつ、
+        最終的な INSERT では UNIQUE 違反 (<code>psycopg.errors.UniqueViolation</code> など)
+        も拾える形にして、 競合時にも 400 を返せるようにします。
+      </p>
+    </details>
 
     <div class="colab-step">
       <span class="step-tag">📒 セル 2-H — NOT NULL 違反</span>
@@ -345,8 +364,8 @@ INSERT INTO users (id, name, display_name) VALUES (1, 'mallory', 'マロリー')
         <li>正規化 / 関数従属性 / 第 3 正規形などの設計論はこのレベルで扱われます</li>
       </ul>
       <p>
-        図は私の知り合いが書いた研修資料 (新卒向け SQL/データエンジニアリング、 BigQuery 文脈) からの
-        借用です。 集合論的な語彙でリレーショナルモデルを掘り下げたい人にはちょうど良いはず。
+        本章の図 (<code>relation-structure.svg</code> / <code>relation-set.svg</code>) は本リポジトリ用に
+        書き起こしたオリジナルです。 改変・再配布はリポジトリのライセンスに従ってください。
       </p>
       <p>
         本教材では <strong>JOIN / GROUP BY / ウィンドウ関数 / トランザクション</strong> は、
@@ -359,8 +378,8 @@ INSERT INTO users (id, name, display_name) VALUES (1, 'mallory', 'マロリー')
     <ul>
       <li>リレーションは集合、 テーブルはその実用形。 「同じ事実を 1 箇所だけに」</li>
       <li>主キーは「行を世界で一意に特定」 する列。 自動採番 (id) を使うのが定番</li>
-      <li><code>NOT NULL / UNIQUE</code> 等の制約は DB が自動で守ってくれる
-          (= アプリで書く必要が無い)</li>
+      <li><code>NOT NULL / UNIQUE</code> 等の制約は DB が守る最後の防波堤。
+          アプリ側のバリデーションと組み合わせて二段構えにする</li>
       <li>SQL は <code>CREATE / INSERT / SELECT / UPDATE / DELETE</code> で大半が書ける。
           残り (JOIN、 GROUP BY、 トランザクション) は必要なときに学ぶ</li>
     </ul>

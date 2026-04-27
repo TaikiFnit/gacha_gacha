@@ -27,6 +27,16 @@ import sqlite3
 from contextlib import contextmanager
 from typing import Any, Iterator
 
+try:
+    # Server code raises psycopg.errors.UniqueViolation on UNIQUE conflicts.
+    # We re-raise SQLite's IntegrityError as the same class so the same
+    # `except` clauses in server.app catch both backends.
+    import psycopg
+    _UniqueViolation = psycopg.errors.UniqueViolation
+except Exception:    # psycopg not installed -> tests will catch by base class
+    class _UniqueViolation(Exception):       # type: ignore[no-redef]
+        pass
+
 
 # ---------------------------------------------------------------------------
 # Type conversion: make SQLite's TIMESTAMP columns come back as
@@ -77,7 +87,14 @@ class _Cursor:
 
     # cursor protocol used by server code -----------------------------------
     def execute(self, sql: str, params: Any = ()) -> "_Cursor":
-        self._cur.execute(_translate_sql(sql), _translate_params(params))
+        try:
+            self._cur.execute(_translate_sql(sql), _translate_params(params))
+        except sqlite3.IntegrityError as e:
+            # Translate UNIQUE constraint failures so server code that
+            # catches psycopg.errors.UniqueViolation works against SQLite too.
+            if "UNIQUE constraint failed" in str(e):
+                raise _UniqueViolation(str(e)) from e
+            raise
         return self
 
     def fetchone(self) -> dict | None:
@@ -86,6 +103,10 @@ class _Cursor:
 
     def fetchall(self) -> list[dict]:
         return [dict(r) for r in self._cur.fetchall()]
+
+    @property
+    def rowcount(self) -> int:
+        return self._cur.rowcount
 
     def close(self) -> None:
         self._cur.close()

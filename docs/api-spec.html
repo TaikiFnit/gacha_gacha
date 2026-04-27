@@ -247,6 +247,13 @@
       宣言されています。 サーバの応答が一致しなければ、UI は更新されず、デバッグコンソールが
       期待と実際の差分を表示します。
     </p>
+    <div class="callout note">
+      <span class="label">⚠️ 同期必須</span>
+      下の <code>SHAPE</code> 定義は <code>web/app.js</code> 内の <code>SHAPE</code> と
+      <strong>手動で一致させる必要があります</strong>。 サーバのレスポンス構造を変えるときは
+      <code>server/app.py</code> / <code>web/app.js</code> / <code>docs/api-spec.html</code>
+      の 3 箇所をまとめて更新してください。
+    </div>
 <pre><code class="language-javascript">const SHAPE = {
   // register / login のレスポンスは user + token
   auth:   { user: { id: "number", name: "string", display_name: "string", coins: "number" },
