@@ -446,9 +446,9 @@ python -m server.app
       API URL 入力欄を <code>http://localhost:8000</code> に設定 (公開 URL は使わない、 localhost で OK)。 これで:
     </p>
     <ul>
-      <li>君のローカル PC で動く Postgres (Docker)</li>
-      <li>君のローカル PC で動く Python サーバ (psycopg)</li>
-      <li>君のローカル PC のブラウザに開いた学習モードフロント</li>
+      <li>手元のローカル PC で動く Postgres (Docker)</li>
+      <li>手元のローカル PC で動く Python サーバ (psycopg)</li>
+      <li>手元のローカル PC のブラウザに開いた学習モードフロント</li>
     </ul>
     <p>がぜんぶ繋がって、 ガチャゲームが本番と同じ構成で動きます。</p>
 
@@ -459,17 +459,17 @@ python -m server.app
       <li>sqlite3 → psycopg は<strong>方言の置換</strong>がメイン (<code>?</code> → <code>%s</code>、 接続関数差)</li>
       <li>1 ファイル肥大化 → 役割で分割 (<code>db.py</code> / <code>auth.py</code> / <code>gacha.py</code> / <code>app.py</code>)</li>
       <li>テストは smoke (E2E) + unit (純粋関数) の 2 種類が定番</li>
-      <li>ここまでで本教材の MVP は完成。 Ch.10 はこれをさらに広げるアイディア集</li>
+      <li>ここまでで本教材の ここでは完成。 Ch.10 はこれをさらに広げるアイディア集</li>
     </ul>
 
     <div class="pager">
-      <a class="prev" href="./ch08-box-and-join.html">
+      <a class="prev" href="./ch07-auth.html">
         <span class="lbl">前へ</span>
-        <span class="ttl">← 第 8 章 Box と JOIN</span>
+        <span class="ttl">← 第 7 章 ユーザー管理</span>
       </a>
-      <a class="next" href="./ch10-extending.html">
+      <a class="next" href="./ch09-extending.html">
         <span class="lbl">次へ</span>
-        <span class="ttl">第 10 章 拡張: ここから先 →</span>
+        <span class="ttl">第 9 章 拡張: ここから先 →</span>
       </a>
     </div>
   </main>

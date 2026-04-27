@@ -21,7 +21,7 @@
     <p>
       Ch.1 から Ch.8 まで通すと、 ガチャを引いて Box に貯めるだけの
       <strong>「最小だが本物のゲームバックエンド」</strong>が手元に残ります。
-      ここから先は、 君が遊びたいゲーム性を足していく自分プロジェクトです。
+      ここから先は、 自分が遊びたいゲーム性を足していく、 完全にあなた自身のプロジェクトです。
       この章では「次にどこを膨らませるか」 のメニューと、
       その実装で必要になりそうなテーブル拡張・SQL パターンを置いておきます。
     </p>
@@ -29,7 +29,7 @@
     <div class="callout tip">
       <span class="label">📐 拡張のスタンス</span>
       <p>「全部一気に作る」 ではなく <strong>1 機能 = 1 ブランチ</strong>。
-        今までやってきたスパイラル (動かす → 試す → 育てる) を継続。
+        今までやってきたステップ式 (動かす → 試す → 拡張する) を継続。
         Ch.8 で書いた smoke テストが、 機能追加で既存が壊れないかを守ります。</p>
     </div>
 
@@ -209,7 +209,7 @@ CREATE INDEX idx_pickup_active ON pickup_periods USING GIST (gacha_id, period);<
     <h2>9.8 学習の旅の終わり、 そして始まり</h2>
 
     <p>
-      ここまで通った君は、 もう 「Web バックエンド + RDB がどう動いているか」 をフレームワーク無しで
+      ここまで通ったあなたは、 もう 「Web バックエンド + RDB がどう動いているか」 をフレームワーク無しで
       自分の手で組み上げた経験を持っています。
     </p>
     <ul>
@@ -228,13 +228,13 @@ CREATE INDEX idx_pickup_active ON pickup_periods USING GIST (gacha_id, period);<
 
     <p>
       ガチャを伸ばすも良し、 全く別のサービスに応用するも良し。
-      この教材は完。 でも、 君のサーバはここからが本番です。
+      この教材は完。 でも、 あなたのサーバはここからが本番です。
     </p>
 
     <div class="pager">
-      <a class="prev" href="./ch09-session.html">
+      <a class="prev" href="./ch08-local.html">
         <span class="lbl">前へ</span>
-        <span class="ttl">← 第 9 章 仕上げ</span>
+        <span class="ttl">← 第 8 章 ローカル移行 + 仕上げ</span>
       </a>
       <a class="next" href="./index.html">
         <span class="lbl">完</span>

@@ -67,7 +67,7 @@
 
         <rect class="b" x="280" y="60" width="200" height="180"/>
         <text class="lbl" x="380" y="105">API サーバ</text>
-        <text class="sub" x="380" y="125">(君が育てたコード)</text>
+        <text class="sub" x="380" y="125">(自分で組み立てたコード)</text>
         <text class="sub" x="380" y="160">- ルート定義</text>
         <text class="sub" x="380" y="180">- ハンドラで JSON を返す</text>
         <text class="sub" x="380" y="200">- DB に SQL を投げる</text>
@@ -93,17 +93,18 @@
     <h2>共通ルール</h2>
     <ul>
       <li>すべて JSON。 リクエスト本文は <code>Content-Type: application/json</code></li>
-      <li>認証は Cookie (<code>gg_session</code>)。 <code>POST /api/login</code> または
-          <code>POST /api/register</code> 成功時に <code>Set-Cookie</code> で発行</li>
+      <li>認証は <strong>Bearer Token</strong>。 <code>POST /api/login</code> または
+          <code>POST /api/register</code> 成功時にレスポンス JSON の <code>token</code> として発行され、
+          以降の認証付きリクエストでは <code>Authorization: Bearer &lt;token&gt;</code> ヘッダで送る</li>
       <li>エラー時は <code>{"error": "メッセージ"}</code> という共通形式</li>
-      <li>CORS はフロントの origin (<code>localhost:5500</code> 等) を許可済み</li>
+      <li>CORS は <code>Access-Control-Allow-Origin: *</code>。 <code>file://</code> や任意の origin から叩ける</li>
     </ul>
 
     <h2>ステータスコード</h2>
     <ul>
       <li><strong>200</strong> 正常</li>
       <li><strong>400</strong> 入力エラー (バリデーション NG / 残コイン不足など)</li>
-      <li><strong>401</strong> ログインしていない / セッション切れ</li>
+      <li><strong>401</strong> ログインしていない / トークン無効 / セッション切れ</li>
       <li><strong>404</strong> パスが存在しない / 指定 ID が無い</li>
       <li><strong>500</strong> サーバ側でバグった (traceback がサーバログに出る)</li>
     </ul>
@@ -113,7 +114,8 @@
 
     <div class="endpoint">
       <h3>POST /api/register <span class="auth no">認証不要</span></h3>
-      <p class="desc">新規ユーザー登録。 成功すると Cookie でセッションが始まる。</p>
+      <p class="desc">新規ユーザー登録。 成功すると <code>token</code> が返るので、
+        以降の認証付きリクエストでは <code>Authorization: Bearer &lt;token&gt;</code> ヘッダで送る。</p>
       <h4>リクエスト</h4>
 <pre><code class="language-json">{
   "name": "alice",
@@ -127,7 +129,8 @@
     "name": "alice",
     "display_name": "アリス",
     "coins": 1000
-  }
+  },
+  "token": "8f3e2c91…"
 }</code></pre>
       <h4>エラー</h4>
       <table class="errors">
@@ -142,12 +145,13 @@
 
     <div class="endpoint">
       <h3>POST /api/login <span class="auth no">認証不要</span></h3>
-      <p class="desc">既存ユーザーでログイン。 成功すると Cookie 発行。</p>
+      <p class="desc">既存ユーザーでログイン。 成功すると新しい <code>token</code> が返る。</p>
       <h4>リクエスト</h4>
 <pre><code class="language-json">{ "name": "alice", "password": "secret123" }</code></pre>
       <h4>レスポンス (200)</h4>
 <pre><code class="language-json">{
-  "user": { "id": 1, "name": "alice", "display_name": "アリス", "coins": 1000 }
+  "user": { "id": 1, "name": "alice", "display_name": "アリス", "coins": 1000 },
+  "token": "8f3e2c91…"
 }</code></pre>
       <h4>エラー</h4>
       <table class="errors">
@@ -160,7 +164,7 @@
 
     <div class="endpoint">
       <h3>POST /api/logout <span class="auth">要認証</span></h3>
-      <p class="desc">セッション破棄。</p>
+      <p class="desc">サーバ側で現在のトークンを無効化する。 以降このトークンでは認証が通らなくなる。</p>
       <h4>レスポンス (200)</h4>
 <pre><code class="language-json">{ "ok": true }</code></pre>
     </div>
@@ -176,7 +180,7 @@
       <table class="errors">
         <thead><tr><th>条件</th><th>ステータス</th><th>本文</th></tr></thead>
         <tbody>
-          <tr><td>Cookie 無し / 期限切れ / 改ざん</td><td>401</td><td><code>{"error": "ログインが必要です"}</code></td></tr>
+          <tr><td>Authorization ヘッダ無し / 不正トークン / 期限切れ</td><td>401</td><td><code>{"error": "ログインが必要です"}</code></td></tr>
         </tbody>
       </table>
     </div>
@@ -244,6 +248,9 @@
       期待と実際の差分を表示します。
     </p>
 <pre><code class="language-javascript">const SHAPE = {
+  // register / login のレスポンスは user + token
+  auth:   { user: { id: "number", name: "string", display_name: "string", coins: "number" },
+            token: "string" },
   user:   { user: { id: "number", name: "string", display_name: "string", coins: "number" } },
   ok:     { ok: "boolean" },
   gachas: { gachas: [{ id: "number", name: "string", price: "number", pool_size: "number" }] },

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>第1章 HTTPサーバーを育てる — gacha_gacha</title>
+<title>第1章 HTTPサーバーを段階的に組み立てる — gacha_gacha</title>
 <link rel="stylesheet" href="./assets/style.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
 </head>
@@ -14,19 +14,19 @@
     <div class="meta-bar">
       <span class="badge">Chapter 1</span>
       <span>所要時間: 60〜90 分</span>
-      <span>形式: 1 つのサーバを 6 ステップで育てる</span>
+      <span>形式: 1 つのサーバを 6 ステップで組み立てる</span>
     </div>
-    <h1>第 1 章 — HTTPサーバーを育てる</h1>
+    <h1>第 1 章 — HTTPサーバーを段階的に組み立てる</h1>
 
     <p>
-      この章で書く HTTP サーバは、<strong>本章だけで終わらない君の生コードです</strong>。
+      この章で書く HTTP サーバは、<strong>本章だけで終わらず、 これから先の章でもずっと触り続けるあなた自身のコードになります</strong>。
       Step 1 で最小サーバを動かし、以降のステップでは <strong>同じサーバを書き足し / 書き換え</strong> ながら
-      機能を足していきます。第4章以降は、<strong>ここで育てたサーバをそのまま運んで</strong>
-      ガチャ API へ進化させていきます。
+      機能を足していきます。第4章以降は、<strong>ここで組み立てたサーバをそのまま運んで</strong>
+      ガチャ API へ拡張していきます。
     </p>
 
     <div class="callout tip">
-      <span class="label">📐 進め方 (スパイラル方式)</span>
+      <span class="label">📐 進め方 (ステップ方式)</span>
       <p>各ステップは:</p>
       <ol>
         <li><strong>📒 セル N: コードを Colab にコピペ → Shift+Enter で動かす</strong></li>
@@ -35,7 +35,7 @@
         <li>(任意) 📝 「自分でちょっと変えてみる」 で 1 か所いじって、出力がどう変わるか観察</li>
       </ol>
       <p>各ステップが終わるたびに <strong>動くサーバが手元にある</strong> 状態になります。
-        最後の Step 6 のセルが、そのまま「君の HTTP サーバ完成版」になります。</p>
+        最後の Step 6 のセルが、そのまま「あなたの HTTP サーバ完成版」になります。</p>
     </div>
 
     <div class="callout note">
@@ -176,7 +176,7 @@ conn.close()</code></pre>
     <h2>準備 — サーバを <code>serve(App)</code> 1 行で起動できるようにする</h2>
     <p>
       Notebook 内で何度もサーバを立てたり止めたりするので、それを 1 行で扱えるヘルパを置きます。
-      これは「育てていくサーバ本体」ではなく、Colab で快適に試行錯誤するための周辺ツールです。
+      これは「書き加えていくサーバ本体」ではなく、Colab で快適に試行錯誤するための周辺ツールです。
     </p>
 
     <div class="colab-step">
@@ -479,7 +479,7 @@ print(serve_kernel_port_as_public(8000))</code></pre>
           </ul>
         </li>
       </ul>
-      <p>これらは Ch.3 (MVP) で本格的に活躍します。 ここでは「あ、 そういうツールがあるんだ」 程度で大丈夫。</p>
+      <p>これらは Ch.3  で本格的に活躍します。 ここでは「あ、 そういうツールがあるんだ」 程度で大丈夫。</p>
     </div>
 
     <div class="colab-step">
@@ -765,11 +765,11 @@ GET  /missing     : (404, '{"error": "Not Found", "path": "/missing", "available
     <p>
       ハンドラ内で <code>raise bad_request("a と b は数値で")</code> と書くだけで、
       自動的に 400 + <code>{"error": "..."}</code> が返るようにします。
-      予期しない例外は traceback を出して 500。これで君のサーバが完成します。
+      予期しない例外は traceback を出して 500。これであなたのサーバが完成します。
     </p>
 
     <div class="colab-step">
-      <span class="step-tag">📒 セル 1-G (= Step 1 から育てたサーバの完成版)</span>
+      <span class="step-tag">📒 セル 1-G (= Step 1 から組み立てたサーバの完成版)</span>
 <pre><code class="language-python">import traceback
 
 class AppError(Exception):
@@ -861,7 +861,7 @@ print("健康確認:", hit("GET",  "/api/health"))</code></pre>
     <!-- =============================================================== -->
     <h2>仕上げ — 完成したサーバを持ち帰る</h2>
     <p>
-      Step 6 のセルが、君が育てた HTTP サーバの完成版です。
+      Step 6 のセルが、あなたが組み立てた HTTP サーバの完成版です。
       <strong>第4章以降では、このコードに DB 呼び出しを足してガチャ API に進化させていきます</strong>。
     </p>
 
@@ -878,8 +878,8 @@ print("健康確認:", hit("GET",  "/api/health"))</code></pre>
     <div class="callout tip">
       <span class="label">🪞 答え合わせ用の参照</span>
       <p>リポジトリには <code>server/app.py</code> という「ガチャの全 API まで仕上げた版」 が
-        置いてあります。 これは<strong>君と同じスパイラルを最後まで回し終わった結果</strong>であって、
-        正しい answer = ここで君が育ててきたコードです。</p>
+        置いてあります。 これは<strong>あなたと同じ全ステップを最後までこなしたあとの状態</strong>であって、
+        正しい answer = ここであなたが書き加えてきたコードです。</p>
       <p>第4章以降、自分のコードと突き合わせながら少しずつ DB 呼び出しを足していけば、
         最終的に <code>server/app.py</code> と同じ機能のサーバが手元に出来上がります。</p>
     </div>
@@ -889,7 +889,7 @@ print("健康確認:", hit("GET",  "/api/health"))</code></pre>
       <li>HTTP は「ヘッダ + 空行 + 本文」というテキストの往復。下にあるのは TCP のバイト列</li>
       <li>Python 標準の <code>http.server</code> でメソッド + パスを処理できる</li>
       <li>ルーター + 例外ハンドリングまで含めて、たった<strong>百行ちょっと</strong>でフレームワーク級の足場ができる</li>
-      <li>1 つのサーバを育てる ≠ ステップごとに別物を作る。 育てたものがそのまま次の章の出発点</li>
+      <li>1 つのサーバを拡張する ≠ ステップごとに別物を作る。 組み立てたものがそのまま次の章の出発点</li>
     </ul>
 
     <div class="pager">

@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第6章 Box と JOIN・集計 — gacha_gacha</title>
+<link rel="stylesheet" href="./assets/style.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar"></aside>
+  <main>
+    <div class="meta-bar">
+      <span class="badge">Chapter 6</span>
+      <span>所要時間: 60〜80 分</span>
+      <span>形式: 3 ステップで Box 集計を完成</span>
+    </div>
+    <h1>第 6 章 — Box と JOIN・集計</h1>
+
+    <p>
+      Ch.5 でガチャを引けるようになりました。 引いた履歴は <code>user_characters</code> テーブルに溜まっていきますが、
+      フロントの「Box」 画面はまだハードコード (毎回ドラゴン 1 体) のまま。 この章で<strong>履歴から「所持品一覧 + 個数」 を集計</strong>
+      して返す本実装をやります。
+    </p>
+
+    <p>3 ステップで:</p>
+    <ol>
+      <li><strong>JOIN</strong> で履歴とキャラマスタを 1 枚に</li>
+      <li><strong>GROUP BY + COUNT</strong> で同じキャラを 1 行に圧縮</li>
+      <li><code>/api/box</code> ハンドラを書いて、 通算引いた回数 (<code>total_pulls</code>) も返す</li>
+    </ol>
+
+    <h2>ステップ 1 — JOIN: 履歴とマスタを 1 枚に</h2>
+
+    <p>
+      <code>user_characters</code> テーブルには <code>character_id</code> しか入っていません。
+      これだけでは「何のキャラを持っているか」 が分からないので、 <strong>characters マスタと結合</strong>して
+      キャラ名 / レア度 / 絵文字をくっつけます。
+    </p>
+
+    <figure>
+      <img src="./assets/figs/gacha-join.svg" alt="user_characters と characters を JOIN する図"
+           style="max-width: 100%; height: auto;">
+      <figcaption>履歴側の <code>character_id</code> をキーに、 マスタ側の行と結びつけて 1 枚のリレーションに展開する</figcaption>
+    </figure>
+
+    <details>
+      <summary>📚 コラム: JOIN と「結合キー」</summary>
+      <p>
+        <strong>JOIN</strong> = 2 つのテーブルを<strong>同じ値の列</strong>で繋いで横に並べる操作。
+        繋ぐ基準になる列を「<strong>結合キー</strong>」 と呼びます。
+      </p>
+      <p>主に 4 種類:</p>
+      <ul>
+        <li><strong>INNER JOIN</strong> (<code>JOIN</code> のみ): 両方のテーブルにマッチした行だけ残す。 一番よく使う</li>
+        <li><strong>LEFT JOIN</strong>: 左のテーブルは全行残す、 右にマッチがなければ NULL。 「未所持を含む全キャラ一覧」 を出す等に</li>
+        <li><strong>RIGHT JOIN</strong>: LEFT の逆。 実務では LEFT を反転して書く方が多いので使われない</li>
+        <li><strong>FULL OUTER JOIN</strong>: 両方の全行を残す。 これも実務では稀</li>
+      </ul>
+      <p>
+        本教材では <strong>INNER JOIN と LEFT JOIN</strong> だけ知っておけば十分。
+      </p>
+    </details>
+
+    <h3>動作確認: SQL で先に試す</h3>
+
+    <div class="colab-step">
+      <span class="step-tag">📒 セル 6-A — JOIN だけしてみる</span>
+<pre><code class="language-sql">%%sql
+-- guest (id=1) の履歴 + キャラ情報
+SELECT uc.id AS uc_id, c.name, c.rarity, c.emoji, uc.obtained_at
+  FROM user_characters uc
+  JOIN characters       c ON c.id = uc.character_id
+ WHERE uc.user_id = 1
+ ORDER BY uc.id;</code></pre>
+    </div>
+
+    <p>
+      Ch.5 でガチャを引いていれば、 引いた回数ぶんの行が出ます。 <strong>同じキャラを 2 回引いていれば 2 行</strong>
+      出る (= 履歴なので重複を許す)。 これを 1 行にまとめるのが次のステップ。
+    </p>
+
+    <h2>ステップ 2 — GROUP BY + COUNT で「個数別」 にまとめる</h2>
+
+    <figure>
+      <img src="./assets/figs/gacha-groupby.svg" alt="GROUP BY character_id で行が束ねられる図"
+           style="max-width: 100%; height: auto;">
+      <figcaption><code>character_id</code> ごとに行を集約し、 <code>COUNT(*)</code> で「束ねた行の数」 を出す</figcaption>
+    </figure>
+
+    <details>
+      <summary>📚 コラム: 集計関数と GROUP BY</summary>
+      <p>
+        <strong>集計関数</strong> = 複数行を 1 つの値にまとめる関数:
+      </p>
+      <ul>
+        <li><code>COUNT(*)</code> — 行数。 <code>COUNT(列)</code> なら<strong>NULL を除いた</strong>非NULL値の数</li>
+        <li><code>SUM(列)</code> — 合計</li>
+        <li><code>AVG(列)</code> — 平均</li>
+        <li><code>MIN(列)</code>, <code>MAX(列)</code> — 最小・最大</li>
+      </ul>
+      <p>
+        単独で使うとテーブル全体に対する 1 つの値が出る。 <code>GROUP BY 列</code> を付けるとその列ごとにグループ分けして、
+        各グループに対して 1 行ずつ集計値が出る。
+      </p>
+      <p>
+        例: <code>SELECT character_id, COUNT(*) FROM user_characters GROUP BY character_id;</code> →
+        各キャラに対して<strong>そのキャラを引いた回数</strong>が出る。
+      </p>
+    </details>
+
+    <div class="colab-step">
+      <span class="step-tag">📒 セル 6-B — GROUP BY で集計 + JOIN でキャラ名も付ける</span>
+<pre><code class="language-sql">%%sql
+SELECT c.id, c.name, c.rarity, c.emoji,
+       COUNT(*)            AS count,
+       MIN(uc.obtained_at) AS first_obtained_at,
+       MAX(uc.obtained_at) AS last_obtained_at
+  FROM user_characters uc
+  JOIN characters       c ON c.id = uc.character_id
+ WHERE uc.user_id = 1
+ GROUP BY c.id
+ ORDER BY c.rarity DESC, c.id;</code></pre>
+    </div>
+
+    <p>
+      <code>MIN</code> / <code>MAX</code> も同じ <code>GROUP BY</code> で取っているので、
+      「初めて獲得した日時」 「最後に獲得した日時」 も 1 つのクエリで出せます。
+    </p>
+
+    <h2>ステップ 3 — <code>/api/box</code> ハンドラを書く</h2>
+
+    <p>フロントが期待する shape:</p>
+<pre><code class="language-json">{
+  "user":        { "id": 1, "name": "guest", "display_name": "ゲスト", "coins": 700 },
+  "total_pulls": 3,
+  "items": [
+    { "id": 10, "name": "ドラゴン", "rarity": 5, "emoji": "🐉", "count": 1, ... },
+    ...
+  ]
+}</code></pre>
+
+    <p>集計クエリ + 通算引いた回数 (<code>total_pulls</code>) + ユーザー情報 を 1 ハンドラで束ねます。</p>
+
+    <div class="colab-step">
+      <span class="step-tag">📒 セル 6-C — /api/box の本実装</span>
+<pre><code class="language-python">@route("GET", "/api/box")
+def box(h):
+    user_id = 1   # まだ認証無し。 全員 guest として扱う
+
+    with get_conn() as conn:
+        # 1) 集計済みの所持キャラ一覧
+        rows = conn.execute(
+            """
+            SELECT c.id, c.name, c.rarity, c.emoji,
+                   COUNT(*)            AS count,
+                   MIN(uc.obtained_at) AS first_obtained_at,
+                   MAX(uc.obtained_at) AS last_obtained_at
+              FROM user_characters uc
+              JOIN characters       c ON c.id = uc.character_id
+             WHERE uc.user_id = ?
+             GROUP BY c.id
+             ORDER BY c.rarity DESC, c.id
+            """,
+            (user_id,),
+        ).fetchall()
+
+        # 2) 通算 pull 回数 (= 履歴の総数)
+        total_pulls = conn.execute(
+            "SELECT COUNT(*) AS n FROM user_characters WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()["n"]
+
+        # 3) 最新の coins / ユーザー情報
+        u = dict(conn.execute(
+            "SELECT id, name, display_name, coins FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone())
+
+    h._json(200, {
+        "user":        u,
+        "total_pulls": total_pulls,
+        "items":       [dict(r) for r in rows],
+    })
+
+print("✅ /api/box が実 DB の集計を返すように")</code></pre>
+    </div>
+
+    <h3>🧪 動作確認</h3>
+    <ol>
+      <li>フロント (ガチャ画面) で「最新化」 ボタン (Box の右上)</li>
+      <li>Ch.5 で引いた分のキャラが Box に並ぶ</li>
+      <li><strong>レア度の高い順</strong>に並ぶ (= <code>ORDER BY c.rarity DESC</code> が効いている)</li>
+      <li>同じキャラを 2 回引くと、 右上に <code>×2</code> バッジが表示される</li>
+      <li>下部のサマリ: 「N 回引いた / M 種類」 が表示される</li>
+    </ol>
+
+    <p>
+      コインも Ch.5 の pull で更新された値が見える。 ガチャ → DB → Box の流れがぜんぶ繋がっています。
+    </p>
+
+    <h2>6.4 ここまでで気づくこと — 次章への動機</h2>
+
+    <p>
+      ここまでで「ガチャを引く」 「Box に蓄積される」 が動いています。 でも仕組みをよく見ると気になる点があります。
+    </p>
+
+    <div class="callout warn">
+      <span class="label">🤔 ちょっと待って</span>
+      <ul>
+        <li>誰がアクセスしても、 <strong>全員が「guest」 として同じ Box を覗く</strong>状態</li>
+        <li>友達と一緒に遊ぶ場合、 自分が引いたキャラを友達が見られるし、 友達のコインを自分が使えてしまう</li>
+        <li>そもそもログイン画面が機能してない (Ch.4 末で /api/me が常に guest を返す)</li>
+      </ul>
+      <p>これだと「俺のドラゴン」 「私のスライム」 が成立しない。 せっかく集めたのに自分のものにならない。</p>
+    </div>
+
+    <p>
+      ここまで「ガチャを引いて Box に集める」 という<strong>遊び</strong>の部分は出来た。 でもこれを<strong>本当の意味で「自分の」 ものにする</strong>には、
+      個別ユーザーの概念が必要です。 そのために次章ではユーザー登録 / ログイン / セッション管理を導入します。
+    </p>
+
+    <h3>📝 自分でちょっと試す (発展)</h3>
+    <ul>
+      <li>「未所持の SSR (rarity=5) のみ」 を返す API <code>/api/box/missing</code> を追加してみよう
+          — ヒント: <code>LEFT JOIN ... WHERE uc.id IS NULL</code></li>
+      <li>「レア度別のコンプリート率」 を返す API。 <code>characters</code> 全体に対して所持しているキャラの割合</li>
+      <li>これらを実装して、 フロントから叩いて結果を見る (デバッグコンソールで確認)</li>
+    </ul>
+
+    <h2>本章のまとめ</h2>
+    <ul>
+      <li><strong>JOIN</strong>: 同じ値の列でテーブルを横に繋げる。 INNER JOIN がメイン、 LEFT JOIN は補助</li>
+      <li><strong>GROUP BY</strong>: 列の値ごとにグループ分け。 各グループに集計関数を適用</li>
+      <li><strong>集計関数</strong>: <code>COUNT</code>/<code>SUM</code>/<code>AVG</code>/<code>MIN</code>/<code>MAX</code>。
+          <code>MIN</code>/<code>MAX</code> は数値だけでなく日時にも使える</li>
+      <li>履歴テーブル + 集計クエリ = 「現在の状態」 を引き出す王道パターン</li>
+      <li>でも全員 guest 共有はおかしい → 次章でユーザー管理を導入する動機が見えた</li>
+    </ul>
+
+    <div class="pager">
+      <a class="prev" href="./ch05-gacha.html">
+        <span class="lbl">前へ</span>
+        <span class="ttl">← 第 5 章 ガチャ抽選</span>
+      </a>
+      <a class="next" href="./ch07-auth.html">
+        <span class="lbl">次へ</span>
+        <span class="ttl">第 7 章 ユーザー管理を導入 →</span>
+      </a>
+    </div>
+  </main>
+</div>
+<script src="./assets/inject-toc.js"></script>
+<script src="./assets/copy-button.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+</body>
+</html>

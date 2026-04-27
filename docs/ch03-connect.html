@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>第3章 サーバと DB を繋ぐ最初の成功体験 — gacha_gacha</title>
+<title>第3章 サーバとデータベースをつないでみる — gacha_gacha</title>
 <link rel="stylesheet" href="./assets/style.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
 </head>
@@ -16,7 +16,7 @@
       <span>所要時間: 60〜90 分</span>
       <span>形式: Ch.1 サーバ + Ch.2 DB を Colab 内で連結</span>
     </div>
-    <h1>第 3 章 — サーバと DB を繋ぐ最初の成功体験 (MVP)</h1>
+    <h1>第 3 章 — サーバとデータベースをつないでみる</h1>
 
     <p>
       Ch.1 で <strong>HTTP サーバ</strong>、 Ch.2 で <strong>users テーブル</strong>を作りました。
@@ -26,7 +26,7 @@
     <p>
       ゴールはシンプル。 REST クライアント (Postman など) からサーバに POST してユーザーを 1 件作り、
       ブラウザでサーバの GET を叩くと <strong>DB に保存されたユーザーが JSON で返ってくる</strong>。
-      この 1 往復が成立した瞬間が、 本教材で最初の「<strong>動くものを自分で作った</strong>」 体験です。
+      この 1 往復が成立した瞬間が、 本教材で最初に「自分で全部つないで動かした」 状態です。
     </p>
 
     <div class="callout tip">
@@ -46,12 +46,12 @@
         <li>JOIN / GROUP BY / トランザクション (必要になる Ch.7 / Ch.8 で)</li>
         <li>本格フロントエンド (Ch.4 でローカルに移ってから)</li>
       </ul>
-      <p>MVP は<strong>「動く」 を最優先</strong>。 セキュリティや効率の話は、 必要性が見えてから足していきます。</p>
+      <p>ここでは<strong>「動く」 を最優先</strong>。 セキュリティや効率の話は、 必要性が見えてから足していきます。</p>
     </div>
 
     <h2>3.1 これから作るシステム</h2>
     <figure>
-      <svg viewBox="0 0 760 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Ch.3 MVP 構成">
+      <svg viewBox="0 0 760 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Ch.3 サーバとデータベースの連結">
         <style>
           .b { fill: #fff; stroke: #4f46e5; stroke-width: 2; rx: 10; }
           .lbl { font: 700 14px sans-serif; fill: #1f2937; text-anchor: middle; }
@@ -175,7 +175,7 @@ users   CREATE TABLE users (
     <!-- =============================================================== -->
     <h2>3.4 サーバを起動する (Ch.1 の最終形 = セル 1-G)</h2>
     <p>
-      Ch.1 で育てた最終のサーバを起動します。 <strong>新しいセルを 1 つ作って、
+      Ch.1 で組み立てた最終のサーバを起動します。 <strong>新しいセルを 1 つ作って、
       Ch.1 のセル 1-A (serve/hit ヘルパ) → セル 1-G (例外を JSON エラー化した完成形)</strong>
       の順にコピペしてください。 1-G まで動くと、 ルータ + 例外ハンドリング付きのサーバが port 8000 で立ちます。
     </p>
@@ -186,7 +186,7 @@ users   CREATE TABLE users (
     </p>
 
     <!-- =============================================================== -->
-    <h2>3.5 Spiral 1 — Colab の port を公開して、 ブラウザから叩く</h2>
+    <h2>3.5 ステップ 1 — Colab の port を公開して、 ブラウザから叩く</h2>
     <p>
       これまで Colab 内部からしか叩いていなかったサーバを、 <strong>外部から</strong>叩けるようにします。
       Colab には <code>serve_kernel_port_as_public</code> という関数が用意されていて、
@@ -224,10 +224,10 @@ print("公開URL:", PUBLIC_URL)</code></pre>
     </div>
 
     <!-- =============================================================== -->
-    <h2>3.6 Spiral 2 — POST を受け取って中身を覗く</h2>
+    <h2>3.6 ステップ 2 — POST を受け取って中身を覗く</h2>
     <p>
       まず<strong>「受け取った body をそのまま print する」 だけ</strong>のハンドラを足します。
-      DB に書く前に、 「サーバまでデータが来ているか」 を 1 度確かめるのが今回のスパイラル。
+      DB に書く前に、 「サーバまでデータが来ているか」 を 1 度確かめるのが今回のステップ。
     </p>
 
     <div class="colab-step">
@@ -257,7 +257,7 @@ for k in sorted(ROUTES): print(" ", k)</code></pre>
     <p>Hoppscotch を開いて以下を設定:</p>
     <ol>
       <li>メソッド: <strong>POST</strong></li>
-      <li>URL: <code>{PUBLIC_URL}/api/users</code> (Spiral 1 で取得したやつ)</li>
+      <li>URL: <code>{PUBLIC_URL}/api/users</code> (ステップ 1 で取得したやつ)</li>
       <li>Headers タブ: <code>Content-Type: application/json</code></li>
       <li>Body タブ → Raw → JSON: <pre><code class="language-json">{"name": "alice", "display_name": "アリス"}</code></pre></li>
       <li><strong>Send</strong> ボタン押下</li>
@@ -278,7 +278,7 @@ for k in sorted(ROUTES): print(" ", k)</code></pre>
     </p>
 
     <!-- =============================================================== -->
-    <h2>3.7 Spiral 3 — DB に INSERT する</h2>
+    <h2>3.7 ステップ 3 — DB に INSERT する</h2>
     <p>
       届いたデータを <strong>sqlite に保存</strong>します。 Ch.2 で作った <code>gacha.db</code> に
       <code>sqlite3</code> モジュール経由で接続し、 INSERT を発行。
@@ -352,7 +352,7 @@ SELECT * FROM users;</code></pre></li>
     </ul>
 
     <!-- =============================================================== -->
-    <h2>3.8 Spiral 4 — GET でユーザー一覧を返す</h2>
+    <h2>3.8 ステップ 4 — GET でユーザー一覧を返す</h2>
     <p>
       最後の往復。 ブラウザで GET を叩くと <strong>DB の中身が JSON で返ってくる</strong> ようにします。
     </p>
@@ -372,7 +372,7 @@ serve(App)</code></pre>
 
     <h3>🧪 ブラウザで叩く</h3>
     <p>
-      <code>{PUBLIC_URL}/api/users</code> をブラウザの新タブで開きます (Spiral 1 で取った公開 URL)。
+      <code>{PUBLIC_URL}/api/users</code> をブラウザの新タブで開きます (ステップ 1 で取った公開 URL)。
       ブラウザは GET を叩くだけなら何も特別なツール不要。
     </p>
 
@@ -389,7 +389,7 @@ serve(App)</code></pre>
     <p>
       <strong>これがゴール</strong>。 別マシンの REST クライアントから POST → サーバ →
       Colab の SQLite に保存 → ブラウザの GET → 同じ DB から読み出し → JSON 表示。
-      <em>君がここまで自分の手で組み上げた「動くシステム」</em>です。
+      <em>ここまで自分の手で組み上げた「動くシステム」</em>です。
     </p>
 
     <!-- =============================================================== -->
@@ -413,7 +413,7 @@ serve(App)</code></pre>
     <p>
       Ch.2 で <code>%%sql</code> から作ったテーブルに、 Ch.3 の Python コードが INSERT しています。
       DB は<strong>共有資源</strong>。 サーバを止めても DB は残るし、 サーバを再起動しても以前のデータは見える
-      (Spiral 4 で確認)。 これが永続化のありがたみ。
+      (ステップ 4 で確認)。 これが永続化のありがたみ。
     </p>
 
     <!-- =============================================================== -->
@@ -436,7 +436,7 @@ serve(App)</code></pre>
       <li>Python の <code>sqlite3</code> モジュールで Ch.2 の DB ファイルにそのまま接続できる</li>
       <li>POST / GET の往復が成立 = フロント (REST クライアント) ⇄ サーバ ⇄ DB が連動した</li>
       <li>同じ DB に 2 つの世界 (SQL 直接 / API 経由) からアクセスできることを目で確認した</li>
-      <li>これが、 教材の最初の<strong>「動くものを作った」 体験</strong>。 ここからは育てていく</li>
+      <li>これが、 教材の最初の<strong>「動くものを作った」 体験</strong>。 ここからは書き加えていく</li>
     </ul>
 
     <div class="pager">

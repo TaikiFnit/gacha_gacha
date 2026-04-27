@@ -21,7 +21,7 @@
     <p>
       Ch.3 で REST クライアント (Hoppscotch など) から Colab サーバを叩けました。
       でもこれは「開発者が手で API を叩いている」 状態で、 まだ<strong>ゲーム画面ではない</strong>。
-      この章で<strong>本物のフロント (ガチャ画面)</strong> を君のブラウザで開いて、
+      この章で<strong>本物のフロント (ガチャ画面)</strong> を手元のブラウザで開いて、
       Colab サーバと繋ぎます。
     </p>
 
@@ -29,7 +29,7 @@
       <span class="label">📐 進め方</span>
       <ul>
         <li>フロント (HTML/CSS/JS) は<strong>既製品</strong>を渡します。 自分で書く必要なし</li>
-        <li>君の手元の PC にダウンロードして、 <strong>index.html をダブルクリック</strong>するだけで動く</li>
+        <li>手元の PC にダウンロードして、 <strong>index.html をダブルクリック</strong>するだけで動く</li>
         <li>サーバは Ch.3 のまま Colab で起動。 Colab 公開 URL をフロントの設定欄に入れる</li>
         <li>「ブラウザに表示されるゲーム画面 ⇄ Colab 上の Python サーバ ⇄ SQLite」 が一気通貫で動く</li>
       </ul>
@@ -47,13 +47,13 @@
     </ul>
     <p>
       ブラウザに <code>.html</code> を開かせると、 ブラウザが中身を読んで <code>.css</code> と <code>.js</code> も
-      自動的に取りに行って画面が組み上がります。 君が今読んでいるこの教材ページもまさにそれ。
+      自動的に取りに行って画面が組み上がります。 今読んでいるこの教材ページもまさにそれ。
     </p>
 
     <h2>4.2 配布フロントを 3 ファイル取得する</h2>
     <p>
       本リポジトリの <code>web/</code> フォルダに、 ガチャ画面の HTML / CSS / JS が一式置いてあります。
-      <strong>下記の 3 ファイル</strong>をダウンロードして、 君の PC の好きなフォルダ (例:
+      <strong>下記の 3 ファイル</strong>をダウンロードして、 手元の PC の好きなフォルダ (例:
       <code>~/Downloads/gacha_web/</code>) にまとめて保存してください。
     </p>
     <ul>
@@ -249,7 +249,7 @@ print("CORS 緩和済みのサーバが立ち上がりました")</code></pre>
       <ul>
         <li>API ステータスインジケータ (●) が緑になる</li>
         <li>デバッグコンソール: <code>GET /api/me → 401</code> もしくは <code>404</code> (= サーバから何かが返ってきている)</li>
-        <li>これで<strong>君の手元のブラウザと Colab のサーバが会話できる状態</strong></li>
+        <li>これで<strong>手元のブラウザと Colab のサーバが会話できる状態</strong></li>
       </ul>
     </div>
 
@@ -258,94 +258,50 @@ print("CORS 緩和済みのサーバが立ち上がりました")</code></pre>
       話している。 オリジンを越えて、 file:// から HTTPS の Colab URL まで、 リクエスト 1 本が通った。
     </p>
 
-    <h2>4.8 ガチャ画面のフォームを試す — 期待形式が違うと…</h2>
+    <h2>4.8 ガチャ画面に直接入る — まずは「ゲスト」 として遊ばせる</h2>
     <p>
-      画面に「ログイン or 新規登録」 のフォームがあるので、 適当に <code>alice</code> / <code>secret123</code>
-      で<strong>「新規登録」</strong> を押してみてください。
+      フロントは起動時に <code>GET /api/me</code> を叩きます。 これに「あなたはログイン中の○○さん」 と
+      返してあげると、 フロントは登録/ログイン画面をスキップしてガチャ画面に直行します。
     </p>
 
     <p>
-      高い確率で<strong>「⚠️ 期待形式の応答が返ってきませんでした」</strong> パネルが画面に出ます。
-      なぜか?
+      ユーザー登録 / ログイン / セッション管理は <strong>Ch.7 でちゃんと作ります</strong>が、
+      まずはガチャを動かしたいので、 <code>/api/me</code> を「<strong>仮の guest ユーザー</strong>」 を返す形にしておきます。
+      この仮実装が Ch.7 で本物に置き換わるイメージ。
     </p>
-    <ul>
-      <li>フロントは <code>POST /api/register</code> を叩いて、 <code>{"user": {"id": 1, "name": "...", ...}}</code>
-          を期待</li>
-      <li>でも Colab のサーバには <code>/api/register</code> が無く、 404 が返る</li>
-      <li>もしくは Ch.3 で作った <code>/api/users</code> 用のロジックを <code>/api/register</code> に
-          書き直していなければ未対応</li>
-    </ul>
-
-    <p>
-      ここで Ch.3 と同じ「<strong>鸚鵡返し → ハードコード</strong>」 のスパイラルを 1 周回します。
-    </p>
-
-    <h2>4.9 サーバに /api/register を仮実装 — フロントが想像通り動く</h2>
 
     <div class="colab-step">
-      <span class="step-tag">📒 セル (Colab) — register をハードコードで仮実装</span>
-<pre><code class="language-python">@route("POST", "/api/register")
-def register(h):
-    body = h._read_json()
-    name = (body.get("name") or "").strip() or "anonymous"
-    h._json(200, {
-        "user": {
-            "id": 1,
-            "name": name,
-            "display_name": body.get("display_name") or name,
-            "coins": 1000,
-        }
-    })
-
-@route("GET", "/api/me")
+      <span class="step-tag">📒 セル (Colab) — /api/me を guest 返却に</span>
+<pre><code class="language-python">@route("GET", "/api/me")
 def me(h):
-    # まだ認証無し。 「未ログイン」 として 401 を返す
-    h._json(401, {"error": "ログインが必要です"})
+    # 仮: 全員 guest ユーザーとして扱う。 Ch.7 で本物の認証に置き換える。
+    h._json(200, {"user": {
+        "id": 1, "name": "guest", "display_name": "ゲスト", "coins": 1000,
+    }})
 
-# サーバを再起動 (App を再評価) する代わりに、 単に新しいルートが ROUTES に追加されたので
-# 上の serve(App) 後でも次のリクエストから有効。
-print("ルート追加完了:", sorted(ROUTES))</code></pre>
+print("✅ /api/me が guest ユーザーを返すように")</code></pre>
     </div>
 
-    <p>
-      ブラウザに戻って、 もう一度フロントのフォームに <code>alice</code> / <code>secret123</code> で「新規登録」 を押す。
-    </p>
+    <p>ブラウザをリロードしてください。</p>
 
     <div class="expected-output">
       <span class="lbl">🎉 期待される結果</span>
       <ul>
-        <li>デバッグコンソール: <code>POST /api/register → 200 ✓ 期待形式</code> (緑色)</li>
-        <li>画面: 「ようこそ alice さん」 「所持コイン: 1000」 と<strong>ガチャ画面</strong>に切り替わる</li>
-        <li>もちろん中身はハードコードなので、 引いても何も起きない (= 次の章以降で本物にする)</li>
+        <li>デバッグコンソール: <code>GET /api/me → 200 ✓ 期待形式</code> (緑)</li>
+        <li>画面: 登録フォームを<strong>飛ばして</strong>、 そのままガチャ画面が出る (「ようこそ ゲスト さん」)</li>
+        <li>「引く」 ボタン押下 → ハードコードのドラゴンが出る (まだ Ch.4 の 404)</li>
       </ul>
     </div>
 
+    <h2>4.9 残り API もハードコードで通す — フロント全機能を埋める</h2>
     <p>
-      <strong>本教材で 2 回目の大きな成功体験</strong>: フロントとサーバが繋がって、 画面遷移が起きた。
-      ここから先 (Ch.5〜8) は<strong>サーバの中身を本物にしていく</strong>だけです。
-      フロント側はもう触らない。
-    </p>
-
-    <h2>4.10 残り API もハードコードで通す (任意)</h2>
-    <p>
-      引き続き残りの API をハードコードで埋めると、 フロントの全機能 (ガチャ一覧、 引く、 Box 表示) が
-      ひとまず動きます。 中身はまだ DB を見ていないのでどれを引いても同じ結果になりますが、
-      <strong>フロント側のすべての画面遷移が確認できる</strong>ので、 仕様の見落としを早期に発見できる。
+      ガチャ一覧 / 引く / Box の 3 API もハードコードで形だけ満たします。 中身はまだ DB を見ていないので
+      <strong>必ずドラゴン</strong>が出ますが、 フロントの全画面遷移が確認できる状態に。
     </p>
 
     <div class="colab-step">
       <span class="step-tag">📒 セル (Colab) — 残り API のハードコード版</span>
-<pre><code class="language-python">@route("POST", "/api/login")
-def login(h):
-    body = h._read_json()
-    name = body.get("name", "alice")
-    h._json(200, {"user": {"id": 1, "name": name, "display_name": name, "coins": 1000}})
-
-@route("POST", "/api/logout")
-def logout(h):
-    h._json(200, {"ok": True})
-
-@route("GET", "/api/gacha/list")
+<pre><code class="language-python">@route("GET", "/api/gacha/list")
 def gacha_list(h):
     h._json(200, {"gachas": [
         {"id": 1, "name": "通常ガチャ",      "price": 100, "pool_size": 12, "total_weight": 505},
@@ -365,7 +321,7 @@ def gacha_pull(h):
 @route("GET", "/api/box")
 def box(h):
     h._json(200, {
-        "user": {"id": 1, "name": "alice", "display_name": "alice", "coins": 900},
+        "user": {"id": 1, "name": "guest", "display_name": "ゲスト", "coins": 900},
         "total_pulls": 1,
         "items": [{
             "id": 10, "name": "ドラゴン", "rarity": 5, "emoji": "🐉", "count": 1,
@@ -379,21 +335,21 @@ print("ルート一覧:", sorted(ROUTES))</code></pre>
     </div>
 
     <p>
-      ブラウザでフロントを<strong>リロード</strong>して、 新規登録 → ガチャ画面 → 「引く」 押下。
-      <strong>必ずドラゴン</strong>が出ます (笑)。 Box にもドラゴンが入る。 デバッグコンソール全緑。
+      ブラウザでフロントをリロード → ガチャ画面 → 「引く」 押下。 <strong>必ずドラゴン</strong>が出ます 。
+      Box にもドラゴンが入る。 デバッグコンソール全緑。
     </p>
 
-    <h2>4.11 ハードコードの限界と次章への動機</h2>
+    <h2>4.10 ハードコードの限界と次章への動機</h2>
     <ul>
-      <li>誰がログインしても全員 alice、 全員 id=1。 サーバが「誰の操作か」 を知らない</li>
-      <li>登録した名前は DB に残らない (Ch.3 で作った users テーブルとは無関係に固定値を返している)</li>
-      <li>引くたびに毎回ドラゴン。 weight も乱数も無視</li>
-      <li>コインは 1000 → 900 で固定、 何回引いても 900</li>
+      <li>引くたびに毎回ドラゴン。 weight も乱数も無視されている</li>
+      <li>コインは 1000 → 900 で固定、 何回引いても変わらない</li>
+      <li>Box は固定 1 体。 引いても増えない</li>
+      <li>登録もログインもなく「ゲスト」 として遊んでいる状態 (これは Ch.7 で改善)</li>
     </ul>
 
     <p>
       でも仕組みとしては、 <strong>フロントが期待する全 API が「形を満たしている」</strong> 状態が確保できました。
-      残るは「中身を本物にする」 だけ。 これを Ch.5 以降で 1 つずつスパイラルでやっていきます。
+      残るは「中身を本物にする」 だけ。 これを Ch.5〜7 でステップを刻んでやっていきます。
     </p>
 
     <h2>本章のまとめ</h2>
@@ -401,18 +357,18 @@ print("ルート一覧:", sorted(ROUTES))</code></pre>
       <li>フロント (HTML/CSS/JS) は既製品を手元に保存して、 <code>file://</code> で開ける</li>
       <li>ブラウザは異なるオリジンへの fetch を止める = <strong>CORS</strong>。
           サーバに <code>Access-Control-Allow-Origin: *</code> + OPTIONS 対応を追加すれば通る</li>
-      <li>Colab 公開 URL をフロントの API 設定欄に入れれば、 君の PC ⇄ Colab で会話成立</li>
+      <li>Colab 公開 URL をフロントの API 設定欄に入れれば、 手元の PC ⇄ Colab で会話成立</li>
       <li>API がハードコードでも、 「形が合っていれば」 フロントは動く。 中身は後でいい</li>
     </ul>
 
     <div class="pager">
-      <a class="prev" href="./ch03-mvp.html">
+      <a class="prev" href="./ch03-connect.html">
         <span class="lbl">前へ</span>
-        <span class="ttl">← 第 3 章 サーバ × DB MVP</span>
+        <span class="ttl">← 第 3 章 サーバとデータベース連結</span>
       </a>
-      <a class="next" href="./ch05-psycopg.html">
+      <a class="next" href="./ch05-gacha.html">
         <span class="lbl">次へ</span>
-        <span class="ttl">第 5 章 中身を本物にする →</span>
+        <span class="ttl">第 5 章 ガチャを本物に →</span>
       </a>
     </div>
   </main>
