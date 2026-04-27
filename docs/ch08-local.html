@@ -647,6 +647,11 @@ APP_PORT=8000</code></pre>
         <code>DB_PARAMS</code> の直書きが <code>_conn_params()</code> の <code>os.getenv(...)</code> に変わるだけで、
         <code>get_conn</code> / <code>healthcheck</code> の役割は同じ。
       </p>
+      <p>
+        ⚠️ <strong>差分のポイント</strong>: モジュール定数 <code>DB_PARAMS</code> は<strong>消えます</strong>。
+        以後 <code>from server.db import DB_PARAMS</code> は ImportError になる(必要無いはず)。
+        接続パラメータは <code>_conn_params()</code> 関数を経由するように一本化される。
+      </p>
 <pre><code class="language-python">"""DB 接続ヘルパ (psycopg)。 環境変数で接続情報を上書きできる。"""
 import os
 from contextlib import contextmanager
