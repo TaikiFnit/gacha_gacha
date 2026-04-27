@@ -51,9 +51,22 @@
 <pre><code class="language-powershell">docker exec -it gacha_pg psql -U gacha -d gacha</code></pre>
     </div>
 
+    <div class="callout warn">
+      <span class="label">⚠️ Ch.2 で入れた alice / bob を一度クリアします</span>
+      <p>
+        以降のステップでは <code>guest</code> ユーザーを <code>id=1</code> に固定して扱います。
+        Ch.2 で alice / bob などを既に入れていると <code>id=1</code> がぶつかるため、
+        本章を始める前に <strong><code>users</code> をリセット</strong>します。
+        学習用 DB なので一度全部消してしまって構いません。
+      </p>
+    </div>
+
     <div class="colab-step">
-      <span class="step-tag">📒 SQL 5-A — users.coins 列を追加 + guest ユーザー</span>
-<pre><code class="language-sql">-- coins 列を追加 (既にある場合 ALTER は失敗するので IF NOT EXISTS で守る)
+      <span class="step-tag">📒 SQL 5-A — users をリセット + coins 列を追加 + guest ユーザー</span>
+<pre><code class="language-sql">-- Ch.2 で入れた alice/bob/... を一度クリア (id=1 を guest 用に空ける)
+TRUNCATE users RESTART IDENTITY CASCADE;
+
+-- coins 列を追加 (既にある場合 ALTER は失敗するので IF NOT EXISTS で守る)
 ALTER TABLE users ADD COLUMN IF NOT EXISTS coins INTEGER NOT NULL DEFAULT 1000;
 
 -- guest ユーザー (Ch.7 でちゃんとした認証を入れるまでの仮ユーザー)
@@ -61,7 +74,7 @@ INSERT INTO users (id, name, display_name, coins)
 VALUES (1, 'guest', 'ゲスト', 1000)
 ON CONFLICT (id) DO NOTHING;
 
--- 確認
+-- 確認: guest 1 行だけ残っているはず
 SELECT * FROM users;</code></pre>
     </div>
 
@@ -309,7 +322,7 @@ print("✅ /api/gacha/list が実 DB から返すように")</code></pre>
     <h3>🧪 動作確認</h3>
     <ul>
       <li>フロント (ブラウザ) の「最新化」 ボタンで再取得 → 通常ガチャ (12 種) / プレミアム (7 種) が表示される</li>
-      <li>seed の数字 (合計 weight = 505 / 175) と一致</li>
+      <li>seed の数字 (合計 weight = 505 / 170) と一致</li>
     </ul>
 
     <h2>5.4 重み付き乱択 (<code>draw</code> 関数)</h2>
@@ -534,7 +547,7 @@ def gacha_pull(h):
 
         # ★ ここから 2 つの書き換え (UPDATE + INSERT) を 1 セットとしてやる
         new_coins = conn.execute(
-            "UPDATE users SET coins = coins - ? WHERE id = %s RETURNING coins",
+            "UPDATE users SET coins = coins - %s WHERE id = %s RETURNING coins",
             (g["price"], user_id),
         ).fetchone()["coins"]
 

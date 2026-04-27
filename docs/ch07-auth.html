@@ -497,7 +497,7 @@ def gacha_pull(h):
         won = draw(pool)
 
         new_coins = conn.execute(
-            "UPDATE users SET coins = coins - ? WHERE id = %s RETURNING coins",
+            "UPDATE users SET coins = coins - %s WHERE id = %s RETURNING coins",
             (g["price"], user["id"]),                # ← user_id をログイン中の人に
         ).fetchone()["coins"]
 
