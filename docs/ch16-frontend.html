@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第16章 フロントの本気化 — gacha_gacha</title>
+<link rel="stylesheet" href="./assets/style.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar"></aside>
+  <main>
+    <div class="meta-bar">
+      <span class="badge">Chapter 16</span>
+      <span>所要時間: 読み物 60 分 / 着手は数日〜</span>
+      <span>形式: 方針論 + サンプルコード片 + リアルタイム通知の最小実装</span>
+    </div>
+    <h1>第 16 章 — フロントの本気化</h1>
+
+    <p>
+      Ch.4 で足した <code>web/</code> 配下のフロントは「サーバの素の応答が見える」 が目的の学習モード版です。
+      本物のゲーム UI に育てるには、 <strong>SPA 化 + リアルタイム通知 + 演出アニメ</strong>を入れることになります。
+      ただし<strong>「API 仕様は変えない」</strong>のが本章で一番大事な約束です。
+    </p>
+
+    <div class="callout tip">
+      <span class="label">🎯 この章の読みどころ</span>
+      <ol>
+        <li>学習モード版フロントの限界はどこか</li>
+        <li>SPA に置き換えるときの設計判断 (React/Vue/Svelte)</li>
+        <li>WebSocket / SSE で「他人がガチャを引いた」 をリアルタイム通知</li>
+        <li>ガチャ演出アニメの最小実装</li>
+        <li>「API は契約」 — フロント書換時にサーバを壊さない smoke テスト</li>
+      </ol>
+    </div>
+
+    <!-- =============================================================== -->
+    <h2>16.1 学習モード版の何が足りないか</h2>
+
+    <p>
+      <code>web/index.html</code> + <code>web/app.js</code> はわざとシンプルに書いてあります。
+      意図は<strong>「 fetch すると何が返ってきて、 それが画面のどこに反映されるか」</strong>が
+      ソースコードを読めば追える、 ということ。 本番ゲーム UI として足りないのは:
+    </p>
+    <ul>
+      <li><strong>状態管理</strong>: ログイン状態、 所持コイン、 Box の中身を画面間で共有する仕組みが無い</li>
+      <li><strong>ルーティング</strong>: <code>?screen=box</code> 的な切り替えで擬似ページ遷移できない</li>
+      <li><strong>演出</strong>: ガチャ抽選中の暗転 / レア確定の光り方が無い</li>
+      <li><strong>リアルタイム性</strong>: 他人がガチャを引いたことを知る術が無い</li>
+    </ul>
+
+    <!-- =============================================================== -->
+    <h2>16.2 SPA 化の設計判断</h2>
+
+    <p>
+      React / Vue / Svelte のどれを選ぶかは好みですが、 <strong>サーバ側との接点</strong>は
+      どれを選んでも同じです:
+    </p>
+
+<pre><code class="language-typescript">// api.ts — どのフレームワークでも、 ここだけは同じ
+export async function pull(gachaId: number): Promise&lt;PullResult&gt; {
+  const res = await fetch("/api/gacha/pull", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${getToken()}`,
+    },
+    body: JSON.stringify({ gacha_id: gachaId }),
+  });
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}</code></pre>
+
+    <p>
+      この<strong><code>api.ts</code> (or <code>api.js</code>) を 1 つのファイルに集約</strong>するのが鍵。
+      フレームワークを差し替えても、 サーバとの会話を担う層は隔離されている状態を保つ。
+    </p>
+
+    <h3>状態管理</h3>
+    <ul>
+      <li>React: Zustand / Jotai (シンプル) または Redux Toolkit (定番)</li>
+      <li>Vue: Pinia</li>
+      <li>Svelte: stores が言語組込み</li>
+    </ul>
+
+    <p>
+      ガチャゲームの状態は「ユーザー (coins, name) + Box (所持キャラ) + 進行中の演出フラグ」
+      くらい。 <strong>大きなツールに振り回されない</strong>ことの方が大事で、 100 行で書ける store
+      で十分です。
+    </p>
+
+    <!-- =============================================================== -->
+    <h2>16.3 WebSocket でリアルタイム通知</h2>
+
+    <p>
+      「他のユーザーが SSR を引いた!」 をタイムラインで流すと、 一気にソシャゲ感が出ます。
+      Python 標準の <code>http.server</code> は WebSocket を喋らないので、 別プロセスで
+      <code>websockets</code> ライブラリを立ち上げるのが現実的:
+    </p>
+
+<pre><code class="language-python">import asyncio, json
+import websockets
+
+clients = set()
+
+async def broadcast(payload):
+    msg = json.dumps(payload, ensure_ascii=False)
+    await asyncio.gather(*(c.send(msg) for c in clients), return_exceptions=True)
+
+async def handler(ws):
+    clients.add(ws)
+    try:
+        async for _ in ws:
+            pass   # クライアントからの送信は使わない
+    finally:
+        clients.discard(ws)
+
+async def main():
+    async with websockets.serve(handler, "0.0.0.0", 8765):
+        await asyncio.Future()</code></pre>
+
+    <p>
+      API サーバから WS サーバへは「内部 HTTP で 1 イベント POST」 → WS サーバが <code>broadcast()</code>、
+      が一番シンプル。 同じプロセスで両方持つなら <code>asyncio</code> 系のフレームワークに
+      乗り換えることになります (Starlette など)。
+    </p>
+
+    <h3>SSE という選択肢</h3>
+
+    <p>
+      クライアントへの一方向通知だけなら、 <strong>WebSocket より SSE (Server-Sent Events)</strong>
+      の方が簡単です。 HTTP レスポンスを <code>Content-Type: text/event-stream</code> で
+      開きっぱなしにして、 サーバから <code>data: ...\n\n</code> を流すだけ。
+      <code>http.server</code> でも書けます。
+    </p>
+
+    <!-- =============================================================== -->
+    <h2>16.4 ガチャ演出アニメ</h2>
+
+    <p>
+      演出はサーバ側で確定した結果を、 フロントが<strong>「あえて遅らせて出す」</strong>ことで生まれます:
+    </p>
+
+<pre><code class="language-typescript">async function pullWithEffect(gachaId: number) {
+  // 1. サーバに結果を取りに行く (これが一瞬で終わる)
+  const result = await pull(gachaId);
+
+  // 2. 暗転 (CSS transition) → 1.5s 待つ
+  await playIntro();
+
+  // 3. 結果の rarity に応じて光らせる
+  if (result.character.rarity &gt;= 5) await playSsrEffect();
+  else if (result.character.rarity &gt;= 4) await playSrEffect();
+
+  // 4. 結果カードを表示
+  showCard(result.character);
+}</code></pre>
+
+    <p>
+      <strong>結果は最初に確定している</strong>のがポイント。 演出の途中で「実はもう一度抽選してる」
+      みたいな実装は、 表示と内部状態がズレて事故ります。
+    </p>
+
+    <!-- =============================================================== -->
+    <h2>16.5 「API は契約」 — フロント刷新時の安全網</h2>
+
+    <p>
+      フロントを React で書き直す、 SPA 化する、 演出を入れる — どれもサーバを触らずに
+      実装できる<strong>はず</strong>です。 そこを守るために、 サーバ側に<strong>API smoke テスト</strong>
+      を残します。
+    </p>
+
+<pre><code class="language-python"># scripts/ch16_api_smoke.py の抜粋
+URL = "http://127.0.0.1:8000"
+def post(path, body, token=None):
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    r = urllib.request.Request(
+        URL + path, data=json.dumps(body).encode(),
+        headers=headers, method="POST",
+    )
+    with urllib.request.urlopen(r) as res:
+        return res.status, json.loads(res.read())
+
+# 1. 登録 + ログイン
+status, _ = post("/api/register", {"name": "smoke", "password": "p"})
+assert status == 200
+status, body = post("/api/login", {"name": "smoke", "password": "p"})
+token = body["token"]
+
+# 2. ガチャを引く
+status, body = post("/api/gacha/pull", {"gacha_id": 1}, token=token)
+assert status == 200
+assert "character" in body and "rarity" in body["character"]</code></pre>
+
+    <p>
+      この smoke テストが通る限り、 サーバ側の API 互換性は守られている。 フロントは
+      この契約に従っていれば、 React で書こうが Vue で書こうが動く。
+    </p>
+
+    <!-- =============================================================== -->
+    <h2>16.6 学習の旅の終わり、 そして始まり</h2>
+
+    <p>
+      ここまで通ったあなたは、 もう <strong>「Web バックエンド + RDB がどう動いているか」</strong>を
+      フレームワーク無しで自分の手で組み上げ、 拡張機能 7 つ (ログインボーナス / アイドル風 /
+      ピックアップ / SNS / マイグレーション / 監視 / フロント) の運用を体で知った状態です。
+    </p>
+
+    <ul>
+      <li>HTTP の中身が見える</li>
+      <li>SQL を直接書ける</li>
+      <li>並行性 (FOR UPDATE / トランザクション / UNIQUE 制約) で守れる</li>
+      <li>本番のスキーマ変更を段階デプロイで安全に進められる</li>
+      <li>運用データ (ログ / メトリクス / probe) を仕込める</li>
+      <li>API 仕様を契約として、 フロントとサーバを独立に進化させられる</li>
+    </ul>
+
+    <p>
+      この後、 Django や FastAPI、 Next.js を触ったとき、 <strong>「あぁ、 これは ROUTES 辞書を
+      綺麗に書いただけ」 「これは <code>collect()</code> を ORM のフックに移しただけ」</strong>と
+      全部透けて見えます。 道具選びの話で、 もう怖くない。
+    </p>
+
+    <p>
+      ガチャを伸ばすも良し、 全く別のサービスに応用するも良し。 この教材は完。
+      でも、 あなたのサーバはここからが本番です。
+    </p>
+
+    <div class="pager">
+      <a class="prev" href="./ch15-monitoring.html">
+        <span class="lbl">前へ</span>
+        <span class="ttl">← 第 15 章 監視・ログ・運用</span>
+      </a>
+      <a class="next" href="./index.html">
+        <span class="lbl">完</span>
+        <span class="ttl">→ 目次に戻る</span>
+      </a>
+    </div>
+  </main>
+</div>
+<script src="./assets/inject-toc.js"></script>
+<script src="./assets/copy-button.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+</body>
+</html>

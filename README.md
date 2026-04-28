@@ -59,6 +59,13 @@ gacha_gacha/
 │   ├── ch07-auth.html       ← ユーザー管理 (Bearer Token)
 │   ├── ch08-local.html      ← ファイル分割 + .env + 自動テスト
 │   ├── ch09-extending.html  ← 拡張アイディア集
+│   ├── ch10-daily-bonus.html      ← ログインボーナス (UNIQUE 制約)
+│   ├── ch11-idle-coins.html       ← アイドル風コイン (FOR UPDATE)
+│   ├── ch12-pickup-gacha.html     ← ピックアップガチャ (TSTZRANGE + JSONB)
+│   ├── ch13-ranking-sns.html      ← ランキング / SNS / 認可境界
+│   ├── ch14-migration.html        ← マイグレーション (番号付き SQL ランナー)
+│   ├── ch15-monitoring.html       ← 監視・ログ・運用 + readiness
+│   ├── ch16-frontend.html         ← フロント本気化 + WebSocket
 │   ├── api-spec.html        ← API 仕様書
 │   └── assets/
 │       ├── style.css
@@ -66,9 +73,16 @@ gacha_gacha/
 │       ├── inject-toc.js
 │       ├── toc.html         ← 共通サイドバー
 │       └── figs/            ← 図版 (リレーション / JOIN / GROUP BY / 重み付き乱択)
-├── exercises/               ← (一部) ステップ式実習
+├── exercises/               ← ステップ式実習 (Ch.1, 2, 10〜16)
 │   ├── ch01/                ← Ch.1 の各ステップのスナップショット (step1〜6)
-│   └── ch02/                ← Ch.2 関連の playground 用 SQL
+│   ├── ch02/                ← Ch.2 関連の playground 用 SQL
+│   ├── ch10/                ← ログインボーナス (UNIQUE 制約)
+│   ├── ch11/                ← アイドル風コイン (FOR UPDATE)
+│   ├── ch12/                ← ピックアップガチャ (TSTZRANGE + JSONB)
+│   ├── ch13/                ← ランキング / SNS / 認可境界
+│   ├── ch14/                ← 番号付き SQL ランナー
+│   ├── ch15/                ← 構造化ログ + メトリクス + readiness
+│   └── ch16/                ← WebSocket 通知 + 雛形フロント + API 互換 smoke
 ├── tests/                   ← 動作保証
 │   ├── test_unit.py                ← 認証ハッシュ + ガチャ抽選分布 (DB不要)
 │   ├── test_e2e_sqlite.py          ← SQLite で全 API を E2E 検証 (開発者向け)
@@ -79,7 +93,14 @@ gacha_gacha/
 │   ├── ch01_hello_http.py
 │   ├── ch01_post_json.py
 │   ├── ch02_explore_schema.py
-│   └── ch02_simple_query.py
+│   ├── ch02_simple_query.py
+│   ├── ch10_daily_bonus_demo.py
+│   ├── ch11_idle_simulator.py
+│   ├── ch12_pickup_simulator.py
+│   ├── ch13_ranking_query.py
+│   ├── ch14_migrate.py
+│   ├── ch15_log_demo.py
+│   └── ch16_api_smoke.py
 └── .github/workflows/test.yml  ← CI: push/PR で unit + e2e 自動実行
 ```
 
@@ -205,6 +226,13 @@ git push -u origin main
 | Ch.7 | ユーザー管理を導入 (auth、 「個別 Box」 への動機付き)          | ✅ 本文あり |
 | Ch.8 | 仕上げ + 自動テスト (ファイル分割 + .env + ユニット/CI)        | ✅ 本文あり |
 | Ch.9 | 拡張アイディア集                                              | ✅ 本文あり |
+| Ch.10 | ログインボーナス (UNIQUE 制約で TOCTTOU を塞ぐ)               | ✅ 本文あり / ✅ 実習あり |
+| Ch.11 | アイドル風コイン自動生成 (FOR UPDATE で並行回収を防ぐ)         | ✅ 本文あり / ✅ 実習あり |
+| Ch.12 | ピックアップガチャ (TSTZRANGE + JSONB + GIST)                  | ✅ 本文あり / ✅ 実習あり |
+| Ch.13 | ランキング / SNS 機能 (集計 SQL + フレンド + 公開設定)          | ✅ 本文あり / ✅ 実習あり |
+| Ch.14 | マイグレーション (番号付き SQL + schema_migrations)             | ✅ 本文あり / ✅ 実習あり |
+| Ch.15 | 監視・ログ・運用 (構造化ログ + メトリクス + readiness)          | ✅ 本文あり / ✅ 実習あり |
+| Ch.16 | フロントの本気化 (SPA + WebSocket + API 互換性 smoke)           | ✅ 本文あり / ✅ 実習あり |
 
 ### 教材 (docs/) と実習 (exercises/) の対応
 
@@ -215,11 +243,21 @@ git push -u origin main
 | -------------------------- | ------------------------ | ---------------------------------------------- |
 | `ch01-http.html`           | `exercises/ch01/`        | step1〜6 の myserver.py スナップショット        |
 | `ch02-database.html`       | `exercises/ch02/`        | playground DB 用の SQL ステップ集               |
-| `ch03-connect.html` 以降   | (実習未整備)              | docs を読みながら自分で書くスタイル              |
+| `ch03-connect.html` 〜 `ch09-extending.html` | (実習未整備) | docs を読みながら自分で書くスタイル |
+| `ch10-daily-bonus.html`    | `exercises/ch10/`        | step1〜6 を順に流すと daily-bonus 付きの最小サーバが立つ |
+| `ch11-idle-coins.html`     | `exercises/ch11/`        | アイドル加算 collect() を組み込んだサーバ最小一式 |
+| `ch12-pickup-gacha.html`   | `exercises/ch12/`        | pickup_periods + 改造版 fetch_pool の最小サーバ |
+| `ch13-ranking-sns.html`    | `exercises/ch13/`        | ランキング + フレンド + 公開設定の最小サーバ      |
+| `ch14-migration.html`      | `exercises/ch14/`        | 番号付き SQL + 自前ランナー一式                  |
+| `ch15-monitoring.html`     | `exercises/ch15/`        | 構造化ログ + /api/metrics + /api/ready の最小サーバ |
+| `ch16-frontend.html`       | `exercises/ch16/`        | WebSocket 通知サーバ + フロント雛形 + smoke テスト |
 
-Ch.3 以降の実習は今後の追加候補です。 現状の本編コードは
+Ch.3〜9 の実習は今後の追加候補です。 現状の本編コードは
 `server/` `db/` `web/` `tests/` に「最終形」 が置かれているので、
 docs を読みながら自分で写経 → そこと差分を取って答え合わせ、 という進め方ができます。
+Ch.10 以降は <code>exercises/chNN/</code> の各 step が**そのまま動く最小サーバ**として
+独立しているので、 写経しなくてもコピペ → <code>python exercises/chNN/stepN_*.py</code>
+で機能を試せます。
 
 ---
 

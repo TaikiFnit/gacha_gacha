@@ -1,0 +1,27 @@
+-- ============================================================================
+-- ch14 / step 4 — 「ALTER TABLE で列追加するときは default 付きで」 の解説。
+-- ============================================================================
+-- 中身は exercises/ch14/migrations/0002_users_email_step1_add_default.sql に
+-- 置いてある。 ここはコメントだけ。
+--
+-- ランナーで適用:
+--   python exercises/ch14/step3_runner.py exercises/ch14/migrations
+-- ============================================================================
+
+-- なぜ default が必要か:
+--   ALTER TABLE users ADD COLUMN email TEXT NOT NULL;
+--   ↑ これは既存行に email が無いので、 NOT NULL 違反でエラーになる。
+--
+--   ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT '';
+--   ↑ 既存行は default で埋まる = エラーにならない。
+--
+-- なぜ「最後にやる」 のではなく「先にやる」 のか:
+--   このマイグレーションを適用した時点では、 アプリのコードは email 列を
+--   まだ読み書きしていない (= step1 で列だけ作る)。 アプリのデプロイ後に
+--   step2 で backfill、 step3 で制約強化、 という三段論法。
+--
+--   逆順だとアプリ側が「まだ無い列」 を参照してエラーになる時間帯がある。
+
+-- 確認:
+--   \d users
+--   SELECT name, email FROM users;
