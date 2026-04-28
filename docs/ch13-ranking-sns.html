@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第13章 ランキング / SNS 機能 — gacha_gacha</title>
+<link rel="stylesheet" href="./assets/style.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar"></aside>
+  <main>
+    <div class="meta-bar">
+      <span class="badge">Chapter 13</span>
+      <span>所要時間: 90〜120 分</span>
+      <span>形式: 集計 SQL + 多対多 + 認可境界</span>
+    </div>
+    <h1>第 13 章 — ランキング / SNS 機能</h1>
+
+    <p>
+      ガチャは「他人と比べる」 と一気に楽しくなります。 所持品ランキング、 フレンド、 公開設定 — この章は
+      <strong>「自分のデータは自分しか書けない、 他人のデータは公開された分だけ見える」</strong>
+      という<em>認可境界</em>の話に踏み込みます。
+    </p>
+
+    <div class="callout tip">
+      <span class="label">🎯 この章のゴール</span>
+      <ol>
+        <li><code>GET /api/ranking/box</code> 所持キャラ数ランキング (上位 50)</li>
+        <li><code>GET /api/ranking/comp/:rarity</code> レア度別コンプ率ランキング</li>
+        <li><code>friendships</code> 多対多テーブル + 申請/承認フロー</li>
+        <li><code>users.public_box</code> フラグで「Box を公開するか」 を本人が選べる</li>
+        <li>他人の Box は<strong>公開設定が ON のときだけ</strong>見える</li>
+      </ol>
+    </div>
+
+    <!-- =============================================================== -->
+    <h2>13.1 所持数ランキング</h2>
+
+<pre><code class="language-sql">SELECT u.id, u.name, COUNT(uc.character_id) AS owned
+  FROM users u
+  LEFT JOIN user_characters uc ON uc.user_id = u.id
+ GROUP BY u.id
+ ORDER BY owned DESC, u.id ASC
+ LIMIT 50;</code></pre>
+
+    <p>
+      <code>LEFT JOIN</code> なので所持 0 のユーザーも 0 件として並ぶ。 順位を返したいなら
+      ウィンドウ関数:
+    </p>
+
+<pre><code class="language-sql">SELECT u.id, u.name, COUNT(uc.character_id) AS owned,
+       RANK() OVER (ORDER BY COUNT(uc.character_id) DESC) AS rank
+  FROM users u
+  LEFT JOIN user_characters uc ON uc.user_id = u.id
+ GROUP BY u.id
+ ORDER BY rank, u.id
+ LIMIT 50;</code></pre>
+
+    <p>
+      <code>RANK()</code> は同点を同順位 + 飛び番、 <code>DENSE_RANK()</code> は同点を同順位 + 飛ばさない、
+      <code>ROW_NUMBER()</code> は完全な通し番号。 サービスの「同率はどう見せたいか」 で選ぶ。
+    </p>
+
+    <!-- =============================================================== -->
+    <h2>13.2 レア度別コンプ率</h2>
+
+    <p>
+      「★ 5 を全 X 体中 何体持っているか」 を計算するには、 マスタ側の母数と所持側の分子を
+      別 SELECT で出して JOIN する:
+    </p>
+
+<pre><code class="language-sql">WITH total AS (
+    SELECT COUNT(*) AS n FROM characters WHERE rarity = 5
+),
+owned AS (
+    SELECT u.id, u.name,
+           COUNT(DISTINCT c.id) AS got
+      FROM users u
+      LEFT JOIN user_characters uc ON uc.user_id = u.id
+      LEFT JOIN characters     c   ON c.id = uc.character_id AND c.rarity = 5
+     GROUP BY u.id
+)
+SELECT o.id, o.name, o.got, t.n,
+       ROUND(o.got::numeric / NULLIF(t.n, 0) * 100, 1) AS comp_pct
+  FROM owned o, total t
+ ORDER BY comp_pct DESC NULLS LAST, o.id
+ LIMIT 50;</code></pre>
+
+    <p>
+      <code>COUNT(DISTINCT c.id)</code> ← <strong>同じキャラを 2 体持っていても重複カウントしない</strong>
+      ためのキモ。 <code>NULLIF(t.n, 0)</code> ← マスタが 0 体だったときのゼロ除算を回避。
+    </p>
+
+    <!-- =============================================================== -->
+    <h2>13.3 フレンド機能</h2>
+
+    <p>
+      フレンドは<strong>多対多 + 自分自身との関係</strong>。 申請 / 承認のステートを持たせます:
+    </p>
+
+<pre><code class="language-sql">CREATE TABLE friendships (
+    requester_id BIGINT      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    addressee_id BIGINT      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    status       TEXT        NOT NULL CHECK (status IN ('pending', 'accepted', 'blocked')),
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (requester_id, addressee_id),
+    CHECK (requester_id &lt;&gt; addressee_id)
+);
+
+CREATE INDEX idx_friend_addressee ON friendships(addressee_id, status);</code></pre>
+
+    <h3>設計のポイント</h3>
+    <ul>
+      <li><strong>方向あり</strong>: A → B の申請と B → A の申請は別レコード。</li>
+      <li><code>CHECK (requester_id &lt;&gt; addressee_id)</code> ← 自分にフレンド申請できないことを DB で保証。</li>
+      <li>承認すると <code>status = 'accepted'</code> に更新。 双方向にレコードを増やすかは設計次第
+        (本教材は <strong>「片方だけ」 + 既存行を UPDATE</strong> 方式を採用)。</li>
+      <li>「フレンド一覧」 を引くときは <code>requester_id = me OR addressee_id = me</code>
+        + <code>status = 'accepted'</code> で UNION 的に出す。</li>
+    </ul>
+
+    <!-- =============================================================== -->
+    <h2>13.4 認可境界 — 他人の Box を覗くには</h2>
+
+    <p>
+      <code>GET /api/users/:id/box</code> を素朴に書くと、 ログインしていれば誰の Box でも見える
+      = <strong>個人情報がダダ漏れ</strong>。 設計として:
+    </p>
+
+    <ol>
+      <li><code>users.public_box BOOLEAN NOT NULL DEFAULT FALSE</code> 列を追加</li>
+      <li>本人が <code>POST /api/me/public_box</code> で ON/OFF を切替可能</li>
+      <li><code>GET /api/users/:id/box</code> は<strong>公開フラグが TRUE の時だけ</strong> 200 で返す。
+        FALSE なら 403。</li>
+    </ol>
+
+<pre><code class="language-python">@route("GET", "/api/users/{id}/box")
+def view_box(h, id: int):
+    with get_conn() as conn:
+        viewer = h.require_user(conn)         # 認証は必要
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, name, public_box FROM users WHERE id = %s",
+                (id,),
+            )
+            target = cur.fetchone()
+            if target is None:
+                raise not_found()
+            # 自分自身は常に見られる。 他人は public_box=TRUE のときだけ
+            if target["id"] != viewer["id"] and not target["public_box"]:
+                raise forbidden("この Box は非公開です")
+            cur.execute(
+                "SELECT character_id, COUNT(*) AS n "
+                "  FROM user_characters WHERE user_id = %s "
+                " GROUP BY character_id ORDER BY character_id",
+                (id,),
+            )
+            box = cur.fetchall()
+    h._json(200, {"user": target["name"], "box": box})</code></pre>
+
+    <div class="callout warn">
+      <span class="label">⚠️ 「ログイン済 = 全部見える」 は事故の温床</span>
+      <p>「DB 行 vs 認証ユーザーのマッピング」 を毎エンドポイントで明示的に書く。
+        <strong>「自分のデータか?」 「公開設定はどうか?」</strong>を SQL の WHERE か、
+        その前のガード文で必ず通す。 これが SNS 系機能で一番事故を起こす場所。</p>
+    </div>
+
+    <!-- =============================================================== -->
+    <h2>13.5 ページネーション</h2>
+
+    <p>
+      ランキングは TOP 50 だけでも十分ですが、 「次の 50」 を出したくなることがあります。
+      シンプルなのは <code>LIMIT 50 OFFSET 0/50/100/...</code>。 ただし、 OFFSET は
+      <strong>後ろのページほど遅くなる</strong>(全行を読み飛ばす) ので、 数万行を超えるなら
+      keyset pagination (<code>WHERE owned &lt; 最後のowned</code>) に切り替えます。
+    </p>
+
+    <!-- =============================================================== -->
+    <h2>13.6 落とし穴まとめ</h2>
+    <ul>
+      <li><code>COUNT</code> の前に <strong><code>DISTINCT</code></strong> を忘れない (重複所持の罠)</li>
+      <li>母数ゼロ除算は <strong><code>NULLIF</code></strong> で回避</li>
+      <li>フレンドは方向あり / 自己ループ禁止 / ステート列あり、 を DB で保証</li>
+      <li>「他人のデータを見せる」 場面では<strong>必ず認可チェック</strong>を SQL or ガード文で書く</li>
+      <li>OFFSET ベースのページネーションは件数が育つと遅くなる</li>
+    </ul>
+
+    <!-- =============================================================== -->
+    <h2>13.7 次章への橋渡し</h2>
+
+    <p>
+      ここまでの 4 つの章 (Ch.10〜13) で、 テーブルが何枚も増えてきました。 第 14 章では
+      <strong>本番データを残しながらスキーマを変える</strong> = マイグレーションの仕組みを作ります。
+      <code>schema.sql</code> を流すだけの世界からの卒業です。
+    </p>
+
+    <div class="pager">
+      <a class="prev" href="./ch12-pickup-gacha.html">
+        <span class="lbl">前へ</span>
+        <span class="ttl">← 第 12 章 ピックアップガチャ</span>
+      </a>
+      <a class="next" href="./ch14-migration.html">
+        <span class="lbl">次へ</span>
+        <span class="ttl">第 14 章 マイグレーション →</span>
+      </a>
+    </div>
+  </main>
+</div>
+<script src="./assets/inject-toc.js"></script>
+<script src="./assets/copy-button.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+</body>
+</html>

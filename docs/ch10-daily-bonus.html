@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第10章 ログインボーナス (デイリー報酬) — gacha_gacha</title>
+<link rel="stylesheet" href="./assets/style.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar"></aside>
+  <main>
+    <div class="meta-bar">
+      <span class="badge">Chapter 10</span>
+      <span>所要時間: 60〜90 分</span>
+      <span>形式: テーブル追加 + エンドポイント実装 + 並行性体験</span>
+    </div>
+    <h1>第 10 章 — ログインボーナス (デイリー報酬)</h1>
+
+    <p>
+      Ch.9 では「拡張アイディア」 として軽く紹介した <strong>ログインボーナス</strong>を、
+      ここから本格的な章として組み上げていきます。 ガチャを長く遊ばせる定番機能であり、
+      同時に <strong>「並行性をどう DB で守るか」</strong>を体で覚えるのにちょうど良い題材です。
+    </p>
+
+    <div class="callout tip">
+      <span class="label">🎯 この章のゴール</span>
+      <ol>
+        <li><code>POST /api/daily/claim</code> を叩くと 200 coin もらえる</li>
+        <li>同じ日に二回叩くと 400 で弾かれる</li>
+        <li>同時に 2 リクエスト来てもどちらか片方しか通らない (DB が物理的に保証)</li>
+      </ol>
+    </div>
+
+    <p>
+      実習は <code>exercises/ch10/</code> に <strong>step1〜step6</strong> として置いてあります。
+      step を上から順に実行していくと、 そのままこの章のゴールが手元に組み上がります。
+      本物の <code>server/app.py</code> はいじりません — exercises 配下だけで完結します。
+    </p>
+
+    <!-- =============================================================== -->
+    <h2>10.1 何を作るか</h2>
+
+    <p>
+      実装するエンドポイントは 1 つだけ:
+    </p>
+<pre><code class="language-text">POST /api/daily/claim
+  → 200 {"amount": 200, "claimed_on": "2026-04-28", "coins": 1200}
+  → 400 {"error": "今日のボーナスはもう受け取り済みです"}  (2 回目)</code></pre>
+
+    <p>
+      シンプルに見えますが、 <strong>「同じ日に 2 回叩いたら 400」</strong>を素朴に
+      実装すると <em>TOCTTOU</em> (Time-Of-Check-To-Time-Of-Use) というバグを踏みます。
+      Ch.10 ではまず素朴版を書いて壊し、 そのあと UNIQUE 制約で物理的に塞ぐ流れで進めます。
+    </p>
+
+    <!-- =============================================================== -->
+    <h2>10.2 テーブル設計</h2>
+
+    <p>
+      1 ユーザーが 1 日に 1 回だけ受け取れる、 を表現するには「ユーザー ID + 受取日」 を
+      <strong>UNIQUE キー</strong>にしたテーブルが一番素直です。
+    </p>
+
+<pre><code class="language-sql">CREATE TABLE daily_bonuses (
+    id          BIGSERIAL    PRIMARY KEY,
+    user_id     BIGINT       NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    claimed_on  DATE         NOT NULL DEFAULT (CURRENT_DATE AT TIME ZONE 'Asia/Tokyo')::date,
+    amount      INTEGER      NOT NULL,
+    UNIQUE (user_id, claimed_on)
+);</code></pre>
+
+    <h3>設計のポイント</h3>
+    <ul>
+      <li><code>UNIQUE (user_id, claimed_on)</code> ← <strong>これが心臓部</strong>。
+        アプリが何回 INSERT してきても、 DB が物理的に 1 行しか入れさせない。</li>
+      <li><code>DEFAULT (CURRENT_DATE AT TIME ZONE 'Asia/Tokyo')::date</code> ←
+        サーバの timezone がどうであれ「日本時間で日付が変わったら新しい行」 になるよう
+        DB 側で日付を確定させる。 アプリ言語側で日付を作って渡すと、 サーバの TZ 設定に
+        引きずられて事故るので注意。</li>
+      <li><code>ON DELETE CASCADE</code> ← ユーザー削除時にもらった履歴も消える。
+        履歴を残すなら <code>ON DELETE SET NULL</code> + <code>user_id NULL 可</code> に
+        変えてもよい (ここはサービス方針)。</li>
+    </ul>
+
+    <!-- =============================================================== -->
+    <h2>10.3 素朴な実装 (まず壊す)</h2>
+
+    <p>
+      最初に「素朴版」 を書きます。 「今日のレコードある? を SELECT で確認して、
+      無ければ INSERT」 という、 一見正しそうなパターン:
+    </p>
+
+<pre><code class="language-python">@route("POST", "/api/daily/claim")
+def claim_daily_naive(h):
+    AMOUNT = 200
+    with get_conn() as conn:
+        user = h.require_user(conn)
+        with conn.cursor() as cur:
+            # 1. 今日の行があるか確認
+            cur.execute(
+                "SELECT 1 FROM daily_bonuses "
+                "WHERE user_id = %s "
+                "  AND claimed_on = (CURRENT_DATE AT TIME ZONE 'Asia/Tokyo')::date",
+                (user["id"],),
+            )
+            if cur.fetchone() is not None:
+                raise bad_request("今日のボーナスはもう受け取り済みです")
+
+            # 2. 無ければ INSERT
+            cur.execute(
+                "INSERT INTO daily_bonuses (user_id, amount) VALUES (%s, %s)",
+                (user["id"], AMOUNT),
+            )
+            cur.execute(
+                "UPDATE users SET coins = coins + %s WHERE id = %s "
+                "RETURNING coins",
+                (AMOUNT, user["id"]),
+            )
+            new_coins = cur.fetchone()["coins"]
+    h._json(200, {"amount": AMOUNT, "coins": new_coins})</code></pre>
+
+    <p>
+      この実装は 1 リクエストずつ来る分には正しく動きます。 でも、 ほぼ同時に 2 リクエストが
+      来たときに <strong>両方とも SELECT で「行が無い」 と判定して、 両方 INSERT が通ってしまう</strong>。
+      これが TOCTTOU バグです。
+    </p>
+
+    <div class="callout warn">
+      <span class="label">⚠️ TOCTTOU の本質</span>
+      <p>「チェック (Time-Of-Check)」 と「使用 (Time-Of-Use)」 の間に、
+        他のトランザクションが状態を変えてしまえる、 という穴。
+        単一プロセス・単一スレッドで動いている間は表面化しないが、
+        本番環境では必ず起きる。</p>
+    </div>
+
+    <!-- =============================================================== -->
+    <h2>10.4 UNIQUE 制約で物理的に塞ぐ</h2>
+
+    <p>
+      正解は<strong>「 SELECT で確認する前に INSERT しちゃう」</strong>です。 UNIQUE 制約があるので、
+      二重投入なら DB 側が <code>UniqueViolation</code> エラーで弾いてくれる。 アプリ側はそれを
+      400 に翻訳するだけ。
+    </p>
+
+<pre><code class="language-python">import psycopg
+
+@route("POST", "/api/daily/claim")
+def claim_daily(h):
+    AMOUNT = 200
+    with get_conn() as conn:
+        user = h.require_user(conn)
+        with conn.cursor() as cur:
+            try:
+                cur.execute(
+                    """
+                    INSERT INTO daily_bonuses (user_id, amount) VALUES (%s, %s)
+                    RETURNING claimed_on
+                    """,
+                    (user["id"], AMOUNT),
+                )
+                claimed_on = cur.fetchone()["claimed_on"]
+            except psycopg.errors.UniqueViolation:
+                raise bad_request("今日のボーナスはもう受け取り済みです")
+
+            cur.execute(
+                "UPDATE users SET coins = coins + %s WHERE id = %s "
+                "RETURNING coins",
+                (AMOUNT, user["id"]),
+            )
+            new_coins = cur.fetchone()["coins"]
+    h._json(200, {
+        "amount": AMOUNT,
+        "claimed_on": claimed_on,
+        "coins": new_coins,
+    })</code></pre>
+
+    <p>
+      ポイントは 3 つ:
+    </p>
+    <ul>
+      <li><strong>INSERT 一発</strong>。 二重チェックを書かない。</li>
+      <li><code>UniqueViolation</code> を <code>bad_request</code> (= 400) に変換するのは
+        アプリ層の責務。 DB のエラーをそのままユーザーに返さない。</li>
+      <li>INSERT と UPDATE は<strong>同じ <code>with get_conn()</code> ブロック内</strong>= 同一トランザクション。
+        片方だけ成功するのを防ぐ。</li>
+    </ul>
+
+    <!-- =============================================================== -->
+    <h2>10.5 並行性を実機で確認する</h2>
+
+    <p>
+      理屈で「TOCTTOU が塞がっている」 と言われても、 本当に 2 リクエスト同時に来たときに
+      片方だけ通るのか、 自分の目で見ないと信じきれません。 <code>exercises/ch10/step4_concurrent_test.py</code>
+      を使って 2 つのリクエストを同時に投げ、 片方が 200, もう片方が 400 になるのを確認します。
+    </p>
+
+<pre><code class="language-python">import threading, urllib.request, json
+
+URL = "http://127.0.0.1:8001/api/daily/claim"
+TOKEN = "..."  # ログイン済みトークン
+
+results = []
+
+def fire():
+    req = urllib.request.Request(
+        URL, method="POST",
+        headers={"Authorization": f"Bearer {TOKEN}"},
+    )
+    try:
+        with urllib.request.urlopen(req) as r:
+            results.append((r.status, r.read().decode()))
+    except urllib.error.HTTPError as e:
+        results.append((e.code, e.read().decode()))
+
+threads = [threading.Thread(target=fire) for _ in range(2)]
+for t in threads: t.start()
+for t in threads: t.join()
+
+print(results)
+# 期待: [(200, '...amount...'), (400, '...受け取り済み...')] の順不同</code></pre>
+
+    <p>
+      <code>http.server</code> は 1 リクエストずつ処理するので、 完全な並行性を観察するには
+      <code>ThreadingHTTPServer</code> に切り替える必要があります。 step4 ではそこも切り替え
+      済みのコードを置いているので、 そのまま動かせばよいです。
+    </p>
+
+    <!-- =============================================================== -->
+    <h2>10.6 タイムゾーンの境界</h2>
+
+    <p>
+      <strong>「日付が変わる瞬間」</strong>はバグの宝庫です。 サーバを UTC で動かしている場合、
+      日本時間 0 時から 9 時までの間に受け取ると、 サーバから見ると「まだ前日」 で、
+      <code>claimed_on</code> が前日の日付で入ります。 これだと「日本時間で 0 時を回ったら
+      新しいボーナスをもらえる」 という体験にズレます。
+    </p>
+
+    <p>
+      対策はテーブル定義の <code>DEFAULT (CURRENT_DATE AT TIME ZONE 'Asia/Tokyo')::date</code>
+      で日本時間に正規化していることに尽きます。 <strong>日付の決定は DB 側に寄せる</strong>のが
+      鉄則 — アプリ言語側で <code>datetime.today().date()</code> を作って渡すと、
+      アプリのプロセスが UTC で動いていれば UTC 日付になってしまう。
+    </p>
+
+    <div class="callout note">
+      <span class="label">📝 演習</span>
+      <p>step5 では PG の <code>SET TIME ZONE 'UTC'</code> で接続を UTC に切り替えてから
+        INSERT してみる演習があります。 DEFAULT に <code>AT TIME ZONE</code> を書いた効果が
+        消えないことを観察します。</p>
+    </div>
+
+    <!-- =============================================================== -->
+    <h2>10.7 落とし穴まとめ</h2>
+    <ul>
+      <li>素朴な「SELECT してから INSERT」 は<strong>必ず</strong> TOCTTOU バグを抱える</li>
+      <li>正解は「INSERT を投げて UNIQUE 違反をキャッチ」 — DB に物理保証してもらう</li>
+      <li>INSERT と UPDATE は<strong>同じトランザクション</strong>に置く</li>
+      <li>日付の確定はサーバ側ではなく<strong>DB 側 (<code>AT TIME ZONE</code>) で</strong></li>
+      <li>並行性は理屈ではなく実機で観察する (step4)</li>
+    </ul>
+
+    <!-- =============================================================== -->
+    <h2>10.8 次章への橋渡し</h2>
+
+    <p>
+      ログインボーナスは「ログインしたタイミング」 で発火します。 でも本物のソシャゲ的には
+      <strong>「ログインしてないときも貯まっていてほしい」</strong>。 第 11 章では、 装備キャラと
+      経過秒数からアイドル風にコインが自動で貯まる仕組みを足します。 そこでも今回学んだ
+      <strong>並行性 (FOR UPDATE)</strong> の話が再登場します。
+    </p>
+
+    <div class="pager">
+      <a class="prev" href="./ch09-extending.html">
+        <span class="lbl">前へ</span>
+        <span class="ttl">← 第 9 章 拡張: ここから先</span>
+      </a>
+      <a class="next" href="./ch11-idle-coins.html">
+        <span class="lbl">次へ</span>
+        <span class="ttl">第 11 章 アイドル風コイン自動生成 →</span>
+      </a>
+    </div>
+  </main>
+</div>
+<script src="./assets/inject-toc.js"></script>
+<script src="./assets/copy-button.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+</body>
+</html>

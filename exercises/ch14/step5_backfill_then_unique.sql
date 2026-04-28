@@ -1,0 +1,23 @@
+-- ============================================================================
+-- ch14 / step 5 — backfill → DROP DEFAULT + UNIQUE の段階デプロイ解説。
+-- ============================================================================
+-- 中身は exercises/ch14/migrations/0003_*.sql と 0004_*.sql に分かれて置いてある。
+-- ============================================================================
+
+-- 流れ:
+--   0002 (step1) ALTER ADD COLUMN ... DEFAULT ''         ← 列を作るだけ
+--   ----- ここでアプリをデプロイ (新規登録時に email 必須化) -----
+--   0003 (step2) UPDATE users SET email = ... WHERE email = ''
+--   0004 (step3) ALTER ... DROP DEFAULT + ADD UNIQUE
+--
+-- 注意点:
+--   * 大きなテーブルの UPDATE は 1 トランザクションで全行回すと重い。
+--     LIMIT 1000 ループ、 もしくは pg_repack 系のツールを併用する。
+--   * UNIQUE 制約は CREATE UNIQUE INDEX CONCURRENTLY のほうが
+--     ロックを長く取らずに済むが、 マイグレーションランナー側で
+--     autocommit 切替が必要 (本ランナーは未対応)。
+--
+-- 動作確認:
+--   SELECT name, email FROM users;
+--   INSERT INTO users (name, pass_hash, email) VALUES ('alice2', 'h', 'alice@example.com');
+--   ↑ alice の backfill 値と衝突して UNIQUE 違反になるはず

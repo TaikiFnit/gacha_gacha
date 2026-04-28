@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第12章 ピックアップガチャ — gacha_gacha</title>
+<link rel="stylesheet" href="./assets/style.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar"></aside>
+  <main>
+    <div class="meta-bar">
+      <span class="badge">Chapter 12</span>
+      <span>所要時間: 90〜120 分</span>
+      <span>形式: 範囲型 + JSONB + GIST インデックス + 抽選ロジック改造</span>
+    </div>
+    <h1>第 12 章 — ピックアップガチャ (期間限定 weight)</h1>
+
+    <p>
+      「今週末は SSR ドラゴンが 3 倍出やすい!」 — ソシャゲ運営の定番。
+      Ch.5 で書いた重み付き乱択ロジックを変えずに、 <strong>期間限定の倍率を後付けで重ねる</strong>
+      設計を学びます。 マスタを書き換えないのが運用上の鉄則です。
+    </p>
+
+    <div class="callout tip">
+      <span class="label">🎯 この章のゴール</span>
+      <ol>
+        <li><code>pickup_periods</code> テーブル (TSTZRANGE + JSONB) を追加</li>
+        <li><code>fetch_pool</code> を「アクティブな期間限定 weight があれば乗算」 に改造</li>
+        <li>GIST インデックスで「現在 NOW() に重なる期間」 を高速に取り出す</li>
+        <li>期間内 / 期間外で抽選結果の分布が変わるのを観察</li>
+      </ol>
+    </div>
+
+    <p>実習は <code>exercises/ch12/</code> の step1〜6 を順に流すだけで動きます。</p>
+
+    <!-- =============================================================== -->
+    <h2>12.1 何が悩ましいのか</h2>
+
+    <p>
+      Ch.5 で作った <code>gacha_items (gacha_id, character_id, weight)</code> テーブル。
+      ここに直接 <code>weight</code> を上書きすれば「このキャラの確率を上げる」 は実現できます。
+      でもこれをやると:
+    </p>
+    <ul>
+      <li>期間が終わった後、 <strong>元の weight に戻す手作業</strong>が発生 (戻し忘れる)</li>
+      <li>過去どの期間にどれだけ盛っていたかの<strong>履歴が消える</strong></li>
+      <li>「同じガチャに対して複数のピックアップが期間重複」 を表現できない</li>
+    </ul>
+
+    <p>
+      正解は<strong>「マスタは絶対に触らず、 期間付きの上乗せテーブルを別に持つ」</strong>。
+    </p>
+
+    <!-- =============================================================== -->
+    <h2>12.2 テーブル設計</h2>
+
+<pre><code class="language-sql">CREATE TABLE pickup_periods (
+    id        BIGSERIAL PRIMARY KEY,
+    gacha_id  BIGINT    NOT NULL REFERENCES gachas(id) ON DELETE CASCADE,
+    period    TSTZRANGE NOT NULL,
+    weights   JSONB     NOT NULL,
+    note      TEXT
+);
+
+CREATE INDEX idx_pickup_active
+    ON pickup_periods USING GIST (gacha_id, period);
+
+INSERT INTO pickup_periods (gacha_id, period, weights, note) VALUES
+  (1,
+   tstzrange('2026-04-26 00:00+09', '2026-04-29 00:00+09', '[)'),
+   '{"10": 6, "11": 6}',
+   'GW 前半 SSR ドラゴン3倍ピックアップ');</code></pre>
+
+    <h3>設計のポイント</h3>
+    <ul>
+      <li><strong><code>TSTZRANGE</code></strong>: PostgreSQL 固有の「タイムゾーン付き時刻範囲型」。
+        <code>'[)'</code> は「開始は含む、 終了は含まない」 半開区間。</li>
+      <li><strong><code>JSONB</code></strong>: <code>{"character_id": 倍率}</code> の辞書を 1 列に持つ。
+        スキーマ変更なしで「対象キャラ何体でも書ける」。</li>
+      <li><strong>GIST インデックス</strong>: 範囲型に対する「重なり (<code>&amp;&amp;</code>) /
+        含む (<code>@&gt;</code>) /含まれる (<code>&lt;@</code>)」 の問い合わせを高速化。
+        B-Tree では効かない (範囲型は <em>順序が無い</em> ので)。</li>
+      <li><code>note</code> 列は運用で「なんのキャンペーンだったっけ」 を残すため。
+        必須ではないが書くと未来の自分を救う。</li>
+    </ul>
+
+    <!-- =============================================================== -->
+    <h2>12.3 fetch_pool を改造する</h2>
+
+    <p>
+      Ch.5 の <code>fetch_pool</code> は次のような SQL でした:
+    </p>
+
+<pre><code class="language-sql">SELECT character_id, weight
+  FROM gacha_items
+ WHERE gacha_id = %s;</code></pre>
+
+    <p>
+      ここに「アクティブな pickup_periods が character_id を盛っているなら weight を倍率倍する」
+      を足します。 <code>LEFT JOIN LATERAL</code> + JSONB のキャストで書けます:
+    </p>
+
+<pre><code class="language-sql">SELECT gi.character_id,
+       gi.weight * COALESCE(p.mult, 1) AS weight
+  FROM gacha_items gi
+  LEFT JOIN LATERAL (
+        SELECT (pp.weights -&gt;&gt; gi.character_id::text)::numeric AS mult
+          FROM pickup_periods pp
+         WHERE pp.gacha_id = gi.gacha_id
+           AND NOW() &lt;@ pp.period
+           AND pp.weights ? gi.character_id::text
+         LIMIT 1
+       ) p ON TRUE
+ WHERE gi.gacha_id = %s;</code></pre>
+
+    <h3>SQL の読み方</h3>
+    <ul>
+      <li><code>NOW() &lt;@ pp.period</code> ← 現在時刻が期間に含まれるか。 GIST インデックスが効く。</li>
+      <li><code>pp.weights ? gi.character_id::text</code> ← JSONB に「そのキャラのキー」 があるか。
+        <code>?</code> は JSONB の存在演算子。</li>
+      <li><code>weights -&gt;&gt; gi.character_id::text</code> ← JSONB から値を <strong>テキストとして</strong>取り出す。
+        <code>-&gt;</code> だと JSON 値 (数値型のままだが扱いにくい)、 <code>-&gt;&gt;</code> はテキスト。
+        <code>::numeric</code> でちゃんと数値に戻す。</li>
+      <li><code>LATERAL</code> + <code>LIMIT 1</code> ← 同じガチャに重複して期間が走っていても 1 行だけ拾う。
+        実運用では「同時並行ピックアップがあったら倍率を掛け算」 なら <code>SUM</code> や
+        <code>EXP(SUM(LN(...)))</code> に変える等、 サービス方針による。</li>
+      <li><code>COALESCE(p.mult, 1)</code> ← 期間ヒットなしのキャラはそのまま 1 倍。</li>
+    </ul>
+
+    <!-- =============================================================== -->
+    <h2>12.4 Python 側の変更は実は最小</h2>
+
+    <p>
+      抽選ロジック本体 (重み付き乱択) は<strong>一切変えません</strong>。 SQL が返す weight が
+      期間中だけ大きくなるだけ。 ガチャを引く Python 側はその weight を使うだけ:
+    </p>
+
+<pre><code class="language-python">def fetch_pool(conn, gacha_id):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT gi.character_id,
+                   gi.weight * COALESCE(p.mult, 1) AS weight
+              FROM gacha_items gi
+              LEFT JOIN LATERAL (
+                    SELECT (pp.weights ->> gi.character_id::text)::numeric AS mult
+                      FROM pickup_periods pp
+                     WHERE pp.gacha_id = gi.gacha_id
+                       AND NOW() <@ pp.period
+                       AND pp.weights ? gi.character_id::text
+                     LIMIT 1
+                   ) p ON TRUE
+             WHERE gi.gacha_id = %s
+            """,
+            (gacha_id,),
+        )
+        return cur.fetchall()</code></pre>
+
+    <p>
+      <strong>API も変わらない</strong> — フロントは何も知らずに、 期間中だけ「ドラゴンが当たりやすいな」
+      と感じる。 これがマスタを触らない設計の旨み。
+    </p>
+
+    <!-- =============================================================== -->
+    <h2>12.5 GIST インデックスの効果を観察する</h2>
+
+    <p>
+      実習 step5 で <code>EXPLAIN ANALYZE</code> を流して、 GIST インデックスがあるとき / 無いときで
+      実行計画と実行時間を比較します。 <code>pickup_periods</code> が数万行に育つ前提だと、
+      GIST 無しではガチャ 1 回の <code>fetch_pool</code> が秒単位かかるくらい遅くなります。
+    </p>
+
+    <!-- =============================================================== -->
+    <h2>12.6 期間切れの後</h2>
+
+    <p>
+      期間が過ぎた行を<strong>消す必要は基本ありません</strong>。 <code>NOW() &lt;@ pp.period</code>
+      で勝手にヒットしなくなる。 残しておけば「先月の GW にどんなピックアップを走らせたか」
+      の運用ログにもなる。 容量がきつくなってきたら、 半年経った行を月次バッチで
+      <code>DELETE WHERE upper(period) &lt; NOW() - INTERVAL '6 months'</code> する程度。
+    </p>
+
+    <!-- =============================================================== -->
+    <h2>12.7 落とし穴まとめ</h2>
+    <ul>
+      <li>マスタ (<code>gacha_items.weight</code>) は<strong>絶対に書き換えない</strong></li>
+      <li>範囲型のクエリには <strong>GIST インデックス</strong>が必須</li>
+      <li>JSONB の値取り出しは <code>-&gt;&gt;</code> + <code>::numeric</code> で型を戻す</li>
+      <li>同時並行ピックアップの扱い (掛け算 / 加算 / 1 件採用) はサービス方針として明文化する</li>
+    </ul>
+
+    <!-- =============================================================== -->
+    <h2>12.8 次章への橋渡し</h2>
+
+    <p>
+      ガチャを長く遊ぶ仕掛けが整ったので、 第 13 章では「他人の状況が見える」 = ランキングや
+      フレンド機能を入れます。 <strong>「自分のデータは自分だけが書ける、 他人のデータは公開分だけ見える」</strong>
+      という認可境界を扱います。
+    </p>
+
+    <div class="pager">
+      <a class="prev" href="./ch11-idle-coins.html">
+        <span class="lbl">前へ</span>
+        <span class="ttl">← 第 11 章 アイドル風コイン自動生成</span>
+      </a>
+      <a class="next" href="./ch13-ranking-sns.html">
+        <span class="lbl">次へ</span>
+        <span class="ttl">第 13 章 ランキング / SNS 機能 →</span>
+      </a>
+    </div>
+  </main>
+</div>
+<script src="./assets/inject-toc.js"></script>
+<script src="./assets/copy-button.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+</body>
+</html>

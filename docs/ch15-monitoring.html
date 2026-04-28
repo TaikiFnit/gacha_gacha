@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第15章 監視・ログ・運用 — gacha_gacha</title>
+<link rel="stylesheet" href="./assets/style.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar"></aside>
+  <main>
+    <div class="meta-bar">
+      <span class="badge">Chapter 15</span>
+      <span>所要時間: 90〜120 分</span>
+      <span>形式: 構造化ログ + メトリクス + readiness probe</span>
+    </div>
+    <h1>第 15 章 — 監視・ログ・運用</h1>
+
+    <p>
+      ガチャシステムが動き始めたら、 次に必要なのは<strong>「動いている事実を観測できる」</strong>仕組みです。
+      ログ、 メトリクス、 ヘルスチェックの 3 種を入れて、 サーバが壊れる前 / 壊れた瞬間に
+      気付ける状態を作ります。
+    </p>
+
+    <div class="callout tip">
+      <span class="label">🎯 この章のゴール</span>
+      <ol>
+        <li><code>logging</code> モジュールで JSON 構造化ログを stdout に出す</li>
+        <li>アクセスログをミドルウェア的に全 API へ自動付与</li>
+        <li>遅いクエリを Postgres 側 (<code>auto_explain</code>) で検出</li>
+        <li><code>GET /api/metrics</code> で Prometheus 互換のテキストを返す</li>
+        <li><code>GET /api/ready</code> で DB 接続まで含めた readiness を返す</li>
+      </ol>
+    </div>
+
+    <!-- =============================================================== -->
+    <h2>15.1 print から logging へ</h2>
+
+    <p>
+      これまで <code>print()</code> で済ませていたデバッグ出力を、 <code>logging</code> モジュールに
+      置き換えます。 違いは:
+    </p>
+
+    <ul>
+      <li><strong>ログレベル</strong>(DEBUG/INFO/WARNING/ERROR) で「本番では INFO 以上だけ」 のような切り替え</li>
+      <li><strong>フォーマット</strong>を一括変更できる (時刻、 モジュール名、 など)</li>
+      <li><strong>出力先</strong>を stdout / ファイル / ネットワークに切り替えられる</li>
+    </ul>
+
+<pre><code class="language-python">import json, logging, sys, time
+
+class JsonFormatter(logging.Formatter):
+    def format(self, record):
+        payload = {
+            "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime(record.created)),
+            "level": record.levelname,
+            "logger": record.name,
+            "msg": record.getMessage(),
+        }
+        if record.exc_info:
+            payload["exc"] = self.formatException(record.exc_info)
+        for k, v in record.__dict__.items():
+            if k.startswith("ctx_"):
+                payload[k[4:]] = v
+        return json.dumps(payload, ensure_ascii=False)
+
+handler = logging.StreamHandler(sys.stdout)
+handler.setFormatter(JsonFormatter())
+root = logging.getLogger()
+root.addHandler(handler)
+root.setLevel(logging.INFO)
+
+log = logging.getLogger("gacha")
+log.info("server boot", extra={"ctx_port": 8000})</code></pre>
+
+    <p>
+      <code>extra={"ctx_xxx": ...}</code> で 1 ログに付帯情報を載せる。 <code>ctx_</code> プレフィックスは
+      アプリ独自の慣習で、 フォーマッタが拾って JSON のトップレベルに展開する。
+    </p>
+
+    <!-- =============================================================== -->
+    <h2>15.2 アクセスログ</h2>
+
+    <p>
+      全リクエストの「method, path, status, ms」 を 1 行 JSON で出すと、
+      <code>jq</code> や Datadog で集計しやすくなります。 <code>BaseHTTPRequestHandler</code> の
+      <code>log_message</code> をオーバーライドする手もありますが、 <code>_dispatch</code> の周りに
+      ラップするほうが情報を載せやすい:
+    </p>
+
+<pre><code class="language-python">def _dispatch(self, method):
+    started = time.perf_counter()
+    path = urlparse(self.path).path
+    handler = ROUTES.get((method, path))
+    status = 200
+    try:
+        if handler is None:
+            status = 404
+            return self._json(404, {"error": "Not Found", "path": path})
+        try:
+            handler(self)
+        except AppError as e:
+            status = e.status
+            self._json(e.status, {"error": e.message})
+        except Exception as e:
+            status = 500
+            log.exception("unhandled", extra={"ctx_path": path})
+            self._json(500, {"error": "internal server error"})
+    finally:
+        log.info("access", extra={
+            "ctx_method": method,
+            "ctx_path":   path,
+            "ctx_status": status,
+            "ctx_ms":     round((time.perf_counter() - started) * 1000, 2),
+        })</code></pre>
+
+    <p>
+      <strong>「成功/失敗どちらでも 1 行出る」</strong>のがコツ。 try / finally で必ず最後に流す。
+    </p>
+
+    <!-- =============================================================== -->
+    <h2>15.3 遅いクエリを Postgres 側で検出する</h2>
+
+    <p>
+      サーバ側のログで「全リクエストの ms」 を見ると、 大体は速いが時々遅い、 が見えてくる。
+      犯人は SQL のことが多い。 Postgres には<strong>「N ミリ秒以上のクエリを自動で吐き出す」</strong>
+      機能が標準で備わっています。
+    </p>
+
+<pre><code class="language-sql">-- postgresql.conf  または ALTER SYSTEM
+ALTER SYSTEM SET log_min_duration_statement = '200ms';
+
+-- auto_explain 拡張をロード
+ALTER SYSTEM SET shared_preload_libraries = 'auto_explain';
+ALTER SYSTEM SET auto_explain.log_min_duration = '200ms';
+ALTER SYSTEM SET auto_explain.log_analyze = on;
+ALTER SYSTEM SET auto_explain.log_buffers = on;
+SELECT pg_reload_conf();</code></pre>
+
+    <p>
+      これで「200ms を超えた SQL は実行計画付きで Postgres ログに出る」 状態。 アプリ側の
+      ログと突き合わせれば「どのリクエストの中で何の SQL が遅かったか」 が追える。
+    </p>
+
+    <!-- =============================================================== -->
+    <h2>15.4 メトリクスエンドポイント</h2>
+
+    <p>
+      Prometheus に拾わせるには「テキストで状態を返すエンドポイント」 を 1 つ生やすだけ。
+      正式には <code>prometheus_client</code> を使うが、 学習目的なら手書きでも 30 行で書ける:
+    </p>
+
+<pre><code class="language-python">from collections import Counter
+
+_metrics = {
+    "requests_total":     Counter(),
+    "request_seconds":    [],
+}
+
+def record_request(method, path, status, ms):
+    _metrics["requests_total"][(method, path, status)] += 1
+    _metrics["request_seconds"].append(ms / 1000)
+
+@route("GET", "/api/metrics")
+def metrics(h):
+    lines = ["# TYPE gacha_requests_total counter"]
+    for (m, p, s), n in _metrics["requests_total"].items():
+        lines.append(f'gacha_requests_total{{method="{m}",path="{p}",status="{s}"}} {n}')
+    lines.append("# TYPE gacha_request_seconds_sum gauge")
+    lines.append(f'gacha_request_seconds_sum {sum(_metrics["request_seconds"]):.6f}')
+    body = ("\n".join(lines) + "\n").encode("utf-8")
+    h.send_response(200)
+    h.send_header("Content-Type", "text/plain; version=0.0.4")
+    h.send_header("Content-Length", str(len(body)))
+    h.end_headers()
+    h.wfile.write(body)</code></pre>
+
+    <p>
+      実装は単純ですが、 <strong>プロセス再起動でリセットされる</strong>ことに注意。
+      Prometheus 側は「1 分前と比べて差分」 を見る前提で動くので、 アプリ側は
+      <em>累計の大きい数</em>を出すだけでよい。
+    </p>
+
+    <!-- =============================================================== -->
+    <h2>15.5 readiness probe</h2>
+
+    <p>
+      <code>/api/health</code> は「サーバプロセスは生きている」 を返すだけ。 でも DB が落ちていたら
+      実用上は<strong>サービスとして死んでいる</strong>。 そこで「依存先まで含めて健康か」 を返す
+      <code>/api/ready</code> を別途作ります:
+    </p>
+
+<pre><code class="language-python">@route("GET", "/api/ready")
+def ready(h):
+    try:
+        with get_conn() as conn, conn.cursor() as cur:
+            cur.execute("SELECT 1")
+        h._json(200, {"status": "ready"})
+    except Exception as e:
+        log.warning("not ready", extra={"ctx_err": str(e)})
+        h._json(503, {"status": "not ready", "detail": str(e)})</code></pre>
+
+    <p>
+      Kubernetes / ECS では <code>/api/health</code> を <strong>liveness probe</strong>、
+      <code>/api/ready</code> を <strong>readiness probe</strong> に紐付ける。 readiness が
+      503 を返している間はロードバランサから外れるので、 「DB 起動待ちの間にトラフィックを流さない」
+      が実現できる。
+    </p>
+
+    <!-- =============================================================== -->
+    <h2>15.6 ダッシュボードを作るとき</h2>
+
+    <p>
+      Prometheus + Grafana を入れたら、 最初に貼るパネルは:
+    </p>
+    <ul>
+      <li>RPS (リクエスト数 / 秒) を <code>method, path</code> で積み上げ</li>
+      <li>p50/p95/p99 レスポンスタイム (heatmap が見やすい)</li>
+      <li>4xx, 5xx のエラーレート</li>
+      <li>DB 接続エラー率 (ready probe の 503 を別グラフ)</li>
+    </ul>
+
+    <p>
+      <strong>「RED メソッド」</strong>(Rate, Errors, Duration) と覚えるとブレない。
+      これだけ見えていれば異常検知の 8 割はカバーできる。
+    </p>
+
+    <!-- =============================================================== -->
+    <h2>15.7 落とし穴まとめ</h2>
+    <ul>
+      <li>print 仕分けは負債。 ログレベルとフォーマットを最初から仕込む</li>
+      <li>アクセスログは<strong>必ず</strong> try/finally で全リクエスト分出す</li>
+      <li>遅いクエリ追跡はアプリ側ログ + <code>auto_explain</code> 両輪</li>
+      <li><code>/api/health</code> と <code>/api/ready</code> は別物。 役割を混ぜない</li>
+      <li>メトリクスはプロセス再起動でリセットされる前提で運用する</li>
+    </ul>
+
+    <!-- =============================================================== -->
+    <h2>15.8 次章への橋渡し</h2>
+
+    <p>
+      バックエンド側の運用基盤が整ったら、 最後はフロントです。 第 16 章は学習モード版フロントから
+      <strong>「本物のゲーム UI」</strong>へ進化させる方針論。 SPA 化、 リアルタイム通知、 演出アニメ、
+      そして<strong>「API 仕様は変えない」</strong>という契約の話で締めます。
+    </p>
+
+    <div class="pager">
+      <a class="prev" href="./ch14-migration.html">
+        <span class="lbl">前へ</span>
+        <span class="ttl">← 第 14 章 マイグレーション</span>
+      </a>
+      <a class="next" href="./ch16-frontend.html">
+        <span class="lbl">次へ</span>
+        <span class="ttl">第 16 章 フロントの本気化 →</span>
+      </a>
+    </div>
+  </main>
+</div>
+<script src="./assets/inject-toc.js"></script>
+<script src="./assets/copy-button.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+</body>
+</html>
